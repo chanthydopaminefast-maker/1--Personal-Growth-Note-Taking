@@ -1,0 +1,73 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net - Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    // Simple validation for AppData structure
+    function isValidAppData(data) {
+      return data is map &&
+             (data.get('students', []) is list) &&
+             (data.get('settings', {}) is map);
+    }
+
+    // --- Rules ---
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      
+      match /appData/data {
+        allow read: if isOwner(userId);
+        allow write: if isOwner(userId) && isValidAppData(incoming());
+      }
+
+      // Allow owner access to all granular collections
+      match /students/{id} {
+        allow read, write: if isOwner(userId);
+      }
+      match /attendance/{id} {
+        allow read, write: if isOwner(userId);
+      }
+      match /expenses/{id} {
+        allow read, write: if isOwner(userId);
+      }
+      match /journal/{id} {
+        allow read, write: if isOwner(userId);
+      }
+      match /dailyTasks/{id} {
+        allow read, write: if isOwner(userId);
+      }
+      match /dpssTopics/{id} {
+        allow read, write: if isOwner(userId);
+      }
+      match /selfLearningTopics/{id} {
+        allow read, write: if isOwner(userId);
+      }
+      match /habitCompletions/{id} {
+        allow read, write: if isOwner(userId);
+      }
+      match /dailyNotes/{id} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+  }
+}
