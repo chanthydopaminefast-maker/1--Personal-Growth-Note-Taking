@@ -4,7 +4,7 @@ import { Plus, Trash2, Wallet, TrendingUp, TrendingDown, Calendar, Search, Dolla
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, isWithinInterval } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 import { motion, AnimatePresence } from 'motion/react';
-import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
+import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid, LineChart, Line } from 'recharts';
 
 interface ExpenseTrackerProps {
   data: AppData;
@@ -13,6 +13,23 @@ interface ExpenseTrackerProps {
 }
 
 const DEFAULT_CATEGORIES = ['Rice', 'Noodle', 'Water', 'Gasoline', 'Coffee', 'Tea', 'Clothes', 'Milk Shake', 'Food', 'Others'];
+
+const isValidDate = (d: any): boolean => {
+  if (!d) return false;
+  const parsed = new Date(d);
+  return !isNaN(parsed.getTime());
+};
+
+const safeFormatDate = (d: any, formatStr: string, fallback: string = 'N/A'): string => {
+  if (!d) return fallback;
+  try {
+    const parsed = new Date(d);
+    if (isNaN(parsed.getTime())) return fallback;
+    return format(parsed, formatStr);
+  } catch (err) {
+    return fallback;
+  }
+};
 
 export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, onUpdateExpense }) => {
   const [isAdding, setIsAdding] = useState(false);
@@ -28,7 +45,10 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
   const [leftPanelTab, setLeftPanelTab] = useState<'inputs' | 'chart'>('inputs');
 
   const EXCHANGE_RATE = data.settings?.exchangeRate || 4000;
-  const categories = data.expenseCategories || DEFAULT_CATEGORIES;
+  const categories = useMemo(() => {
+    const raw = Array.isArray(data.expenseCategories) ? data.expenseCategories : DEFAULT_CATEGORIES;
+    return raw.filter((c): c is string => typeof c === 'string' && !!c.trim());
+  }, [data.expenseCategories]);
   const expenses = data.expenses || [];
 
   const [isManagingRecurring, setIsManagingRecurring] = useState(false);
@@ -119,7 +139,7 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
         badge: 'bg-emerald-500/10 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
       };
     }
-    const cat = category.toLowerCase().trim();
+    const cat = (category || '').toLowerCase().trim();
     if (cat.includes('rice')) {
       return {
         bg: 'bg-amber-500/5 hover:bg-amber-500/8 border-l-4 border-amber-500 dark:bg-amber-500/10 dark:hover:bg-amber-500/15',
@@ -200,7 +220,7 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
     const todayStr = format(today, 'yyyy-MM-dd');
     
     const pendingToLog = recurringList.filter(item => {
-      const loggedThisMonth = item.lastLoggedDate && item.lastLoggedDate.startsWith(currentMonthStr);
+      const loggedThisMonth = item.lastLoggedDate && typeof item.lastLoggedDate === 'string' && item.lastLoggedDate.startsWith(currentMonthStr);
       return currentDay >= item.dayOfMonth && !loggedThisMonth && item.active !== false;
     });
     
@@ -208,7 +228,7 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
     
     const newEntries: ExpenseEntry[] = [];
     const updatedRecurring = recurringList.map(item => {
-      const loggedThisMonth = item.lastLoggedDate && item.lastLoggedDate.startsWith(currentMonthStr);
+      const loggedThisMonth = item.lastLoggedDate && typeof item.lastLoggedDate === 'string' && item.lastLoggedDate.startsWith(currentMonthStr);
       if (currentDay >= item.dayOfMonth && !loggedThisMonth && item.active !== false) {
         const newEntry: ExpenseEntry = {
           id: uuidv4(),
@@ -265,8 +285,10 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
 
   // Get common amounts for specific category from history
   const getCategorySuggestions = (category: string) => {
+    if (!category || typeof category !== 'string') return [];
+    const categoryLower = category.toLowerCase();
     const historical = expenses
-      .filter(e => e.category.toLowerCase() === category.toLowerCase())
+      .filter(e => e && e.category && typeof e.category === 'string' && e.category.toLowerCase() === categoryLower)
       .map(e => ({ amount: e.amount, currency: e.currency }));
     
     // Count frequency
@@ -291,7 +313,7 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
   const historicalDescriptionToCategoryMap = useMemo(() => {
     const lookup: Record<string, Record<string, number>> = {};
     expenses.forEach(e => {
-      if (e.type === 'Expense' && e.description && e.category) {
+      if (e && e.type === 'Expense' && e.description && e.category) {
         const descKey = e.description.trim().toLowerCase();
         if (!lookup[descKey]) {
           lookup[descKey] = {};
@@ -357,7 +379,7 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
     };
 
     for (const [cat, words] of Object.entries(ruleMappings)) {
-      const targetCat = categories.find(c => c.toLowerCase() === cat.toLowerCase());
+      const targetCat = categories.find(c => c && typeof c === 'string' && c.toLowerCase() === cat.toLowerCase());
       if (targetCat) {
         if (words.some(word => cleanDesc.includes(word))) {
           return targetCat;
@@ -374,6 +396,7 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
   }, [newExpense.category, expenses]);
 
   const getCategoryIcon = (catName: string): React.ReactNode => {
+    if (!catName || typeof catName !== 'string') return <Tag size={15} className="text-slate-400" />;
     const clean = catName.toLowerCase().trim();
     if (clean.includes('rice')) return <Utensils size={15} className="text-amber-500" />;
     if (clean.includes('noodle')) return <Flame size={15} className="text-orange-500" />;
@@ -397,6 +420,7 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
     const endOfYesterday = endOfDay(new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000));
 
     let recent = expenses.filter(e => {
+      if (!e || !e.date || !isValidDate(e.date)) return false;
       const eDate = new Date(e.date);
       return eDate >= fourDaysAgo && eDate <= endOfYesterday;
     });
@@ -404,7 +428,12 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
     // Fallback: if no records in the past 4 days, take up to 20 recent historical records (excluding today)
     if (recent.length === 0) {
       recent = expenses.filter(e => {
-        return startOfDay(new Date(e.date)).getTime() < startOfToday.getTime();
+        if (!e || !e.date || !isValidDate(e.date)) return false;
+        try {
+          return startOfDay(new Date(e.date)).getTime() < startOfToday.getTime();
+        } catch (err) {
+          return false;
+        }
       }).slice(0, 20);
     }
 
@@ -416,7 +445,7 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
     // 1. Get unique amounts + currencies
     const amountMap = new Map<string, { amount: number; currency: 'USD' | 'KHR'; count: number }>();
     recent.forEach(e => {
-      if (e.amount > 0) {
+      if (e && typeof e.amount === 'number' && e.amount > 0) {
         const key = `${e.amount}-${e.currency || 'USD'}`;
         const existing = amountMap.get(key);
         if (existing) {
@@ -435,7 +464,7 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
     // 2. Get unique full entry suggestions for Smart Add (e.g., "Rice 10000R" or "Latte 3.2$")
     const entriesMap = new Map<string, { label: string; text: string; count: number }>();
     recent.forEach(e => {
-      if (e.type === 'Expense' && e.description.trim()) {
+      if (e && e.type === 'Expense' && e.description && typeof e.description === 'string' && e.description.trim()) {
         const amtSuffix = e.currency === 'KHR' ? `${e.amount}R` : `${e.amount}$`;
         const label = `${e.description} ${amtSuffix}`;
         const text = `${e.description} ${amtSuffix}`;
@@ -486,6 +515,7 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
     })();
 
     return expenses.filter(e => {
+      if (!e || !e.date || !isValidDate(e.date)) return false;
       const d = new Date(e.date);
       // Ensure we compare local dates correctly
       return d.getTime() >= start.getTime() && d.getTime() <= end.getTime();
@@ -495,11 +525,12 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
   const pieChartData = useMemo(() => {
     const expensesByCategory: Record<string, number> = {};
     filteredByView.forEach(e => {
-      if (e.type === 'Expense') {
+      if (e && e.type === 'Expense') {
         let amt = e.amount;
         if (e.currency === 'KHR' && currencyMode === 'USD') amt /= EXCHANGE_RATE;
         if (e.currency === 'USD' && currencyMode === 'KHR') amt *= EXCHANGE_RATE;
-        expensesByCategory[e.category] = (expensesByCategory[e.category] || 0) + amt;
+        const cat = e.category || 'Others';
+        expensesByCategory[cat] = (expensesByCategory[cat] || 0) + amt;
       }
     });
 
@@ -515,6 +546,7 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
     const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
 
     const recentExpenses = expenses.filter(e => {
+      if (!e || !e.date || !isValidDate(e.date)) return false;
       if (e.type !== 'Expense') return false;
       const eDate = new Date(e.date);
       return eDate >= fourteenDaysAgo && eDate <= now;
@@ -539,13 +571,45 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
     };
   }, [expenses, currencyMode, EXCHANGE_RATE]);
 
+  const last30DaysTrend = useMemo(() => {
+    const trendMap: Record<string, number> = {};
+    const now = new Date();
+    
+    // Initialize last 30 days with 0
+    for (let i = 29; i >= 0; i--) {
+        const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+        trendMap[safeFormatDate(d, 'yyyy-MM-dd')] = 0;
+    }
+    
+    expenses.forEach(e => {
+        if (!e || e.type !== 'Expense' || !e.date || !isValidDate(e.date)) return;
+        const d = new Date(e.date);
+        const diffDays = Math.floor((now.getTime() - d.getTime()) / (24 * 60 * 60 * 1000));
+        if (diffDays >= 0 && diffDays < 30) {
+            let amt = e.amount;
+            if (e.currency === 'KHR' && currencyMode === 'USD') amt /= EXCHANGE_RATE;
+            if (e.currency === 'USD' && currencyMode === 'KHR') amt *= EXCHANGE_RATE;
+            const key = safeFormatDate(d, 'yyyy-MM-dd');
+            if (trendMap[key] !== undefined) {
+                trendMap[key] += amt;
+            }
+        }
+    });
+
+    return Object.entries(trendMap).map(([dateStr, total]) => ({
+        date: dateStr,
+        displayDate: safeFormatDate(new Date(dateStr), 'MMM dd'),
+        total: Math.round(total * 100) / 100
+    }));
+  }, [expenses, currencyMode, EXCHANGE_RATE]);
+
   const handleDownloadPDF = () => {
     const activeViewLabel = 
-      viewMode === 'Daily' ? format(selectedDate, 'MMMM dd, yyyy') :
-      viewMode === 'Weekly' ? `Week of ${format(startOfWeek(selectedDate), 'MMMM dd, yyyy')}` :
-      viewMode === 'Monthly' ? format(selectedDate, 'MMMM yyyy') :
-      viewMode === 'Range' ? `${format(new Date(startDate), 'MMM dd, yyyy')} - ${format(new Date(endDate), 'MMM dd, yyyy')}` :
-      format(selectedDate, 'yyyy');
+      viewMode === 'Daily' ? safeFormatDate(selectedDate, 'MMMM dd, yyyy') :
+      viewMode === 'Weekly' ? `Week of ${safeFormatDate(startOfWeek(selectedDate), 'MMMM dd, yyyy')}` :
+      viewMode === 'Monthly' ? safeFormatDate(selectedDate, 'MMMM yyyy') :
+      viewMode === 'Range' ? `${safeFormatDate(startDate, 'MMM dd, yyyy')} - ${safeFormatDate(endDate, 'MMM dd, yyyy')}` :
+      safeFormatDate(selectedDate, 'yyyy');
 
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
@@ -580,7 +644,7 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
     const transactionsHtml = filteredExpenses.map(e => `
       <tr>
         <td style="padding: 12px 10px; border-bottom: 1px solid #f1f5f9; font-size: 11px; font-weight: 600; color: #334155;">
-          ${e.date ? format(new Date(e.date), 'MMM dd, h:mm a') : 'N/A'}
+          ${safeFormatDate(e.date, 'MMM dd, h:mm a')}
         </td>
         <td style="padding: 12px 10px; border-bottom: 1px solid #f1f5f9; font-size: 11px; font-weight: 500; color: #475569;">
           ${e.description}
@@ -748,7 +812,7 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
               <p>${viewMode} Statement &mdash; ${activeViewLabel}</p>
             </div>
             <div class="header-meta">
-              Generated: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}<br/>
+              Generated: ${new Date().toLocaleDateString()}<br/>
               Active Base standard: ${currencyMode}<br/>
               Cambodian Exchange Rate: 1 USD = ${EXCHANGE_RATE.toLocaleString()} KHR
             </div>
@@ -889,7 +953,7 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
       type: newExpense.type,
       currency: newExpense.currency,
       date: editingExpenseId 
-        ? (expenses.find(e => e.id === editingExpenseId)?.date || selectedDate.toISOString())
+        ? (expenses.find(e => e && e.id === editingExpenseId)?.date || selectedDate.toISOString())
         : selectedDate.toISOString()
     };
 
@@ -899,7 +963,7 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
       onUpdate({
         ...data,
         expenses: editingExpenseId
-          ? expenses.map(e => e.id === editingExpenseId ? expense : e)
+          ? expenses.map(e => e && e.id === editingExpenseId ? expense : e)
           : [expense, ...expenses]
       });
     }
@@ -976,7 +1040,7 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
     let khrTotal = 0;
 
     items.forEach(e => {
-      if (e.type === 'Expense') {
+      if (e && e.type === 'Expense') {
         if (e.currency === 'KHR') khrTotal += e.amount;
         else usdTotal += e.amount;
       }
@@ -994,13 +1058,13 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
   const handleDeleteExpense = (id: string) => {
     if (!window.confirm('Are you sure you want to permanently delete this expense record? This action cannot be undone.')) return;
     
-    const expenseToDelete = expenses.find(e => e.id === id);
+    const expenseToDelete = expenses.find(e => e && e.id === id);
     if (onUpdateExpense && expenseToDelete) {
       onUpdateExpense(expenseToDelete, true);
     } else {
       onUpdate({
         ...data,
-        expenses: expenses.filter(e => e.id !== id)
+        expenses: expenses.filter(e => e && e.id !== id)
       });
     }
   };
@@ -1038,13 +1102,13 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
     const input = smartInput.trim();
     if (!input) return;
 
-    let foundCategory = categories.find(c => c.toLowerCase() === 'others') || categories[0] || 'Others';
+    let foundCategory = categories.find(c => c && typeof c === 'string' && c.toLowerCase() === 'others') || categories[0] || 'Others';
     let amountStr = '';
 
     const parts = input.split(' ');
     if (parts.length >= 2) {
       const firstPart = parts[0].toLowerCase();
-      const match = categories.find(c => c.toLowerCase() === firstPart);
+      const match = categories.find(c => c && typeof c === 'string' && c.toLowerCase() === firstPart);
       if (match) {
         foundCategory = match;
         amountStr = parts.slice(1).join('').trim();
@@ -1054,7 +1118,7 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
         if (!isNaN(possibleAmount.amount)) {
           amountStr = lastPart;
           foundCategory = parts.slice(0, parts.length - 1).join(' ').trim();
-          const matchExisting = categories.find(c => c.toLowerCase() === foundCategory.toLowerCase());
+          const matchExisting = categories.find(c => c && typeof c === 'string' && foundCategory && typeof foundCategory === 'string' && c.toLowerCase() === foundCategory.toLowerCase());
           if (matchExisting) foundCategory = matchExisting;
         }
       }
@@ -1093,22 +1157,62 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
     const summary: Record<string, number> = {};
     categories.forEach(cat => summary[cat] = 0);
     
-    filteredByView.filter(e => e.type === 'Expense').forEach(e => {
+    filteredByView.filter(e => e && e.type === 'Expense' && e.category && typeof e.category === 'string').forEach(e => {
       let amt = e.amount;
       if (e.currency === 'KHR' && currencyMode === 'USD') amt /= EXCHANGE_RATE;
       if (e.currency === 'USD' && currencyMode === 'KHR') amt *= EXCHANGE_RATE;
       
-      const match = categories.find(c => c.toLowerCase() === e.category.toLowerCase());
+      const match = categories.find(c => c && typeof c === 'string' && c.toLowerCase() === e.category.toLowerCase());
       if (match) {
         summary[match] = (summary[match] || 0) + amt;
       } else {
-        const others = categories.find(c => c.toLowerCase() === 'others') || categories[0];
+        const others = categories.find(c => c && typeof c === 'string' && c.toLowerCase() === 'others') || categories[0];
         if (others) summary[others] = (summary[others] || 0) + amt;
       }
     });
     
     return summary;
   }, [filteredByView, categories, currencyMode]);
+
+  const todayExpensesCalculations = useMemo(() => {
+    // Total spent on selected date
+    const todayExpenses = expenses.filter(exp => 
+      exp &&
+      exp.type === 'Expense' &&
+      isValidDate(exp.date) &&
+      safeFormatDate(exp.date, 'yyyy-MM-dd') === safeFormatDate(selectedDate, 'yyyy-MM-dd')
+    );
+
+    const totalSpent = todayExpenses.reduce((sum, exp) => {
+      if (exp.currency === 'KHR') {
+        return sum + (currencyMode === 'USD' ? exp.amount / EXCHANGE_RATE : exp.amount);
+      } else {
+        return sum + (currencyMode === 'USD' ? exp.amount : exp.amount * EXCHANGE_RATE);
+      }
+    }, 0);
+
+    const categoryShares = categories.map(cat => {
+      const todayCatSum = todayExpenses.filter(exp => exp && exp.category && typeof exp.category === 'string' && cat && typeof cat === 'string' && exp.category.toLowerCase() === cat.toLowerCase()).reduce((sum, exp) => {
+        if (exp.currency === 'KHR') {
+          return sum + (currencyMode === 'USD' ? exp.amount / EXCHANGE_RATE : exp.amount);
+        } else {
+          return sum + (currencyMode === 'USD' ? exp.amount : exp.amount * EXCHANGE_RATE);
+        }
+      }, 0);
+
+      const pctShare = totalSpent > 0 ? (todayCatSum / totalSpent) * 100 : 0;
+      return {
+        category: cat,
+        amount: todayCatSum,
+        percentage: Math.round(pctShare),
+        hexColor: getCategoryHexColor(cat),
+        icon: getCategoryIcon(cat),
+        styles: getCategoryColorClass(cat)
+      };
+    }).filter(item => item.amount > 0).sort((a,b) => b.amount - a.amount);
+
+    return { totalSpent, categoryShares };
+  }, [expenses, selectedDate, currencyMode, EXCHANGE_RATE, categories]);
 
   const toggleCurrency = () => {
     const next = currencyMode === 'USD' ? 'KHR' : 'USD';
@@ -1121,17 +1225,22 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
 
   const filteredExpenses = useMemo(() => {
     let filtered = filteredByView.filter(e => 
-      e.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      e.category.toLowerCase().includes(searchTerm.toLowerCase())
+      e && 
+      ((e.description && typeof e.description === 'string' && e.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
+       (e.category && typeof e.category === 'string' && e.category.toLowerCase().includes(searchTerm.toLowerCase())))
     );
 
     if (viewMode === 'Daily') return filtered;
 
     const aggregated: Record<string, ExpenseEntry & { count?: number }> = {};
     filtered.forEach(e => {
-        const key = `${e.category}-${e.type}-${e.currency}-aggregated`;
+        if (!e) return;
+        const cat = e.category || 'Others';
+        const type = e.type || 'Expense';
+        const curr = e.currency || 'USD';
+        const key = `${cat}-${type}-${curr}-aggregated`;
         if (!aggregated[key]) {
-            aggregated[key] = { ...e, description: `${e.category} (Total)`, id: key };
+            aggregated[key] = { ...e, category: cat, type: type as any, currency: curr as any, description: `${cat} (Total)`, id: key };
             (aggregated[key] as any).count = 1;
         } else {
             aggregated[key].amount += e.amount;
@@ -1146,7 +1255,8 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
     });
   }, [filteredByView, searchTerm, viewMode, currencyMode]);
 
-  const getCategoryColorClass = (catName: string) => {
+  function getCategoryColorClass(catName: string) {
+    if (!catName || typeof catName !== 'string') return { text: 'text-slate-500', bg: 'bg-slate-500/10', border: 'border-slate-150 dark:border-slate-800/60', focus: 'focus-within:ring-slate-500/20' };
     const clean = catName.toLowerCase().trim();
     if (clean.includes('rice')) return { text: 'text-amber-500', bg: 'bg-amber-500/10', border: 'border-amber-100 dark:border-amber-500/20', focus: 'focus-within:ring-amber-500/20' };
     if (clean.includes('noodle')) return { text: 'text-orange-500', bg: 'bg-orange-500/10', border: 'border-orange-100 dark:border-orange-500/20', focus: 'focus-within:ring-orange-500/20' };
@@ -1160,7 +1270,8 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
     return { text: 'text-slate-500', bg: 'bg-slate-500/10', border: 'border-slate-150 dark:border-slate-800/60', focus: 'focus-within:ring-slate-500/20' };
   };
 
-  const getCategoryHexColor = (catName: string) => {
+  function getCategoryHexColor(catName: string) {
+    if (!catName || typeof catName !== 'string') return '#64748b';
     const clean = catName.toLowerCase().trim();
     if (clean.includes('rice')) return '#f59e0b';
     if (clean.includes('noodle')) return '#f97316';
@@ -1177,9 +1288,11 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
   const getCategoryTotalForSelectedDate = (category: string) => {
     return expenses
       .filter(exp => 
+        exp &&
         exp.category === category &&
         exp.type === 'Expense' &&
-        format(new Date(exp.date), 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd')
+        isValidDate(exp.date) &&
+        safeFormatDate(exp.date, 'yyyy-MM-dd') === safeFormatDate(selectedDate, 'yyyy-MM-dd')
       )
       .reduce((sum, exp) => {
         if (exp.currency === 'KHR') {
@@ -1245,10 +1358,10 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
                  
                  <div className="flex flex-col items-center">
                    <span className="text-[11px] font-black italic text-slate-900 tracking-widest whitespace-nowrap">
-                     {viewMode === 'Daily' && format(selectedDate, 'MMM dd, yyyy')}
-                     {viewMode === 'Weekly' && `Week of ${format(startOfWeek(selectedDate), 'MMM dd')}`}
-                     {viewMode === 'Monthly' && format(selectedDate, 'MMMM yyyy')}
-                     {viewMode === 'Yearly' && format(selectedDate, 'yyyy')}
+                     {viewMode === 'Daily' && safeFormatDate(selectedDate, 'MMM dd, yyyy')}
+                     {viewMode === 'Weekly' && `Week of ${safeFormatDate(startOfWeek(selectedDate), 'MMM dd')}`}
+                     {viewMode === 'Monthly' && safeFormatDate(selectedDate, 'MMMM yyyy')}
+                     {viewMode === 'Yearly' && safeFormatDate(selectedDate, 'yyyy')}
                    </span>
                    <span className="text-[8px] font-bold text-amber-500/60 uppercase tracking-tighter">Active Date</span>
                  </div>
@@ -1389,77 +1502,149 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
         </motion.div>
       </div>
 
-      {/* Monthly Budget Tracker Row */}
-      <div className="mb-6">
-        <motion.div 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-3xl border border-white/20 dark:border-slate-800/80 rounded-[32px] p-6 shadow-md relative overflow-hidden"
-        >
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div className="flex-1">
-              <div className="flex items-center justify-between mb-2">
+      {/* Monthly Budget Tracker Row & Share of Spent Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        <div className="lg:col-span-2">
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-3xl border border-white/20 dark:border-slate-800/80 rounded-[32px] p-6 shadow-md relative overflow-hidden h-full flex flex-col justify-between"
+          >
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+              <div className="flex-1">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-amber-500/10 rounded-xl text-amber-600">
+                      <DollarSign size={18} />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase italic tracking-tighter">Budget Progress</h3>
+                      <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{viewMode} Limit Monitoring</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className={`text-lg font-black italic ${isBudgetExceeded ? 'text-rose-600' : 'text-slate-900 dark:text-white'}`}>
+                      {formatCurrency(totalExpense)}
+                    </span>
+                    <span className="text-xs font-black text-slate-400 mx-1">/</span>
+                    <span className="text-xs font-bold text-slate-500">
+                      {budgetGoal > 0 ? formatCurrency(budgetGoal) : 'Goal Not Set'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="relative h-4 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden border border-slate-200/50 dark:border-slate-800 shadow-inner">
+                  <motion.div 
+                    initial={{ width: 0 }}
+                    animate={{ width: `${Math.min(budgetProgress, 100)}%` }}
+                    className={`absolute top-0 left-0 h-full rounded-full transition-all duration-1000 ${
+                      budgetProgress > 90 ? 'bg-gradient-to-r from-rose-500 to-rose-600' : 
+                      budgetProgress > 70 ? 'bg-gradient-to-r from-amber-500 to-amber-600' : 
+                      'bg-gradient-to-r from-emerald-500 to-emerald-600'
+                    }`}
+                    style={{ boxShadow: `0 0 10px ${budgetProgress > 90 ? '#ef4444' : budgetProgress > 70 ? '#f59e0b' : '#10b981'}44` }}
+                  />
+                </div>
+                
+                <div className="flex justify-between mt-2">
+                  <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">
+                    {Math.round(budgetProgress)}% Consumed
+                  </span>
+                  <span className={`text-[8px] font-black uppercase tracking-widest ${isBudgetExceeded ? 'text-rose-600 animate-pulse' : 'text-slate-400'}`}>
+                    {isBudgetExceeded ? '⚠️ OVER BUDGET' : `${formatCurrency(Math.max(0, budgetGoal - totalExpense))} remaining`}
+                  </span>
+                </div>
+              </div>
+
+              <div className="w-full md:w-48 bg-slate-50 dark:bg-slate-800/10 border border-slate-100 dark:border-slate-800/60 p-4 rounded-2xl flex flex-col gap-2">
+                <label className="text-[9px] font-black uppercase text-slate-500 tracking-widest ml-1 text-center">Set Budget Goal</label>
+                <div className="relative">
+                  <input 
+                    type="number"
+                    placeholder="Enter Goal"
+                    defaultValue={budgetGoal > 0 ? budgetGoal : ''}
+                    onBlur={(e) => handleUpdateBudgetGoal(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleUpdateBudgetGoal((e.target as HTMLInputElement).value)}
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-2 px-3 text-xs font-black text-center outline-none focus:border-amber-500 transition-all shadow-sm"
+                  />
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[10px] font-bold text-slate-300">
+                    {currencyMode}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+
+        <div>
+          {/* Share of Spent Free Card */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-3xl border border-white/20 dark:border-slate-800/80 rounded-[32px] p-6 shadow-md relative overflow-hidden h-full flex flex-col justify-between"
+            whileHover={{ y: -4, scale: 1.01 }}
+          >
+            <div>
+              <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
-                  <div className="p-2 bg-amber-500/10 rounded-xl text-amber-600">
-                    <DollarSign size={18} />
+                  <div className="p-2 bg-gradient-to-br from-amber-500/10 to-orange-500/15 rounded-xl text-amber-500">
+                    <Activity size={18} />
                   </div>
                   <div>
-                    <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase italic tracking-tighter">Budget Progress</h3>
-                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{viewMode} Limit Monitoring</p>
+                    <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase italic tracking-tighter">Share of Spent</h3>
+                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Today's Category distribution</p>
                   </div>
                 </div>
-                <div className="text-right">
-                  <span className={`text-lg font-black italic ${isBudgetExceeded ? 'text-rose-600' : 'text-slate-900 dark:text-white'}`}>
-                    {formatCurrency(totalExpense)}
-                  </span>
-                  <span className="text-xs font-black text-slate-400 mx-1">/</span>
-                  <span className="text-xs font-bold text-slate-500">
-                    {budgetGoal > 0 ? formatCurrency(budgetGoal) : 'Goal Not Set'}
-                  </span>
-                </div>
-              </div>
-
-              <div className="relative h-4 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden border border-slate-200/50 dark:border-slate-800 shadow-inner">
-                <motion.div 
-                  initial={{ width: 0 }}
-                  animate={{ width: `${Math.min(budgetProgress, 100)}%` }}
-                  className={`absolute top-0 left-0 h-full rounded-full transition-all duration-1000 ${
-                    budgetProgress > 90 ? 'bg-gradient-to-r from-rose-500 to-rose-600' : 
-                    budgetProgress > 70 ? 'bg-gradient-to-r from-amber-500 to-amber-600' : 
-                    'bg-gradient-to-r from-emerald-500 to-emerald-600'
-                  }`}
-                  style={{ boxShadow: `0 0 10px ${budgetProgress > 90 ? '#ef4444' : budgetProgress > 70 ? '#f59e0b' : '#10b981'}44` }}
-                />
-              </div>
-              
-              <div className="flex justify-between mt-2">
-                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">
-                  {Math.round(budgetProgress)}% Consumed
-                </span>
-                <span className={`text-[8px] font-black uppercase tracking-widest ${isBudgetExceeded ? 'text-rose-600 animate-pulse' : 'text-slate-400'}`}>
-                  {isBudgetExceeded ? '⚠️ OVER BUDGET' : `${formatCurrency(Math.max(0, budgetGoal - totalExpense))} remaining`}
+                <span className="text-[9px] font-black text-amber-600 bg-amber-500/10 px-2.5 py-1 rounded-xl uppercase tracking-wider">
+                  Live Key
                 </span>
               </div>
-            </div>
 
-            <div className="w-full md:w-48 bg-slate-50 dark:bg-slate-800/10 border border-slate-100 dark:border-slate-800/60 p-4 rounded-2xl flex flex-col gap-2">
-              <label className="text-[9px] font-black uppercase text-slate-500 tracking-widest ml-1 text-center">Set Budget Goal</label>
-              <div className="relative">
-                <input 
-                  type="number"
-                  placeholder="Enter Goal"
-                  defaultValue={budgetGoal > 0 ? budgetGoal : ''}
-                  onBlur={(e) => handleUpdateBudgetGoal(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleUpdateBudgetGoal((e.target as HTMLInputElement).value)}
-                  className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl py-2 px-3 text-xs font-black text-center outline-none focus:border-amber-500 transition-all shadow-sm"
-                />
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[10px] font-bold text-slate-300">
-                  {currencyMode}
+              {todayExpensesCalculations.categoryShares.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-6 text-center h-[100px]">
+                  <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800/80 flex items-center justify-center mb-2">
+                    <Activity size={16} className="text-slate-300 dark:text-slate-600" />
+                  </div>
+                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">No expenses registered for today</p>
+                  <p className="text-[8px] text-slate-400 mt-1">Populate category totals below</p>
                 </div>
-              </div>
+              ) : (
+                <div className="space-y-3.5 max-h-[140px] overflow-y-auto pr-1 select-none custom-scrollbar-amber">
+                  {todayExpensesCalculations.categoryShares.map(item => (
+                    <div key={item.category} className="flex flex-col gap-1">
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-5 h-5 rounded-lg flex items-center justify-center text-[11px] ${item.styles.bg}`}>
+                            {item.icon}
+                          </span>
+                          <span className="text-[11px] font-black text-slate-800 dark:text-slate-250 uppercase tracking-tight truncate max-w-[80px]">
+                            {item.category}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 text-right">
+                          <span className="text-[10px] font-extrabold text-amber-550">
+                            {item.percentage}%
+                          </span>
+                          <span className="text-[11px] font-black text-slate-950 dark:text-white">
+                            {formatCurrency(item.amount, currencyMode)}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="w-full bg-slate-100 dark:bg-slate-800/80 h-1.5 rounded-full overflow-hidden relative">
+                        <motion.div 
+                          initial={{ width: 0 }}
+                          animate={{ width: `${item.percentage}%` }}
+                          className="h-full rounded-full"
+                          style={{ backgroundColor: item.hexColor }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
-        </motion.div>
+          </motion.div>
+        </div>
       </div>
 
       <div className="expense-columns-wrapper flex-1 flex flex-col gap-6 overflow-visible overflow-y-auto custom-scrollbar-amber pr-2 pb-20">
@@ -1523,8 +1708,10 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
                                 // Total today spent to calculate share percentage
                                 const todaySpentAll = expenses
                                   .filter(exp => 
+                                    exp &&
                                     exp.type === 'Expense' &&
-                                    format(new Date(exp.date), 'yyyy-MM-dd') === format(selectedDate, 'yyyy-MM-dd')
+                                    isValidDate(exp.date) &&
+                                    safeFormatDate(exp.date, 'yyyy-MM-dd') === safeFormatDate(selectedDate, 'yyyy-MM-dd')
                                   )
                                   .reduce((sum, exp) => {
                                     if (exp.currency === 'KHR') {
@@ -1558,37 +1745,21 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
                                                 </span>
                                             </div>
                                         </div>
-
-                                        {/* Mid-Section: Sleek horizontal dynamic indicator bar representing Spent share */}
-                                        <div className="hidden sm:flex flex-col flex-1 px-4 lg:px-6 min-w-0">
-                                            <div className="flex justify-between items-center text-[7.5px] font-extrabold text-slate-400 dark:text-slate-500 tracking-wider">
-                                                <span>SHARE OF SPENT</span>
-                                                <span>{Math.round(pctShare)}%</span>
-                                            </div>
-                                            <div className="w-full bg-slate-100 dark:bg-slate-800/80 h-1.5 rounded-full mt-1 overflow-hidden relative">
-                                                <motion.div 
-                                                    initial={{ width: 0 }}
-                                                    animate={{ width: `${Math.min(pctShare, 100)}%` }}
-                                                    className="h-full rounded-full transition-all duration-700"
-                                                    style={{ backgroundColor: hexColor }}
-                                                />
-                                            </div>
-                                        </div>
-
-                                        {/* Right Side: Accumulated Today Spend & Interactive Numeric Input */}
-                                        <div className="flex items-center gap-3 shrink-0">
+                                        
+                                        {/* Right Side: Accumulated Today Spend & Interactive Numeric Input with Generous Space */}
+                                        <div className="flex items-center gap-3.5 shrink-0">
                                             {todaySpend > 0 && (
-                                                <div className="flex flex-col items-end shrink-0 select-none animate-in fade-in zoom-in duration-300">
+                                                <div className="flex flex-col items-end shrink-0 select-none animate-in fade-in zoom-in duration-300 mr-1">
                                                     <span className="text-[12px] font-black text-slate-900 dark:text-slate-150">
                                                         {formatCurrency(todaySpend, currencyMode)}
                                                     </span>
-                                                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest leading-none">
+                                                    <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest leading-none mt-0.5">
                                                         TODAY
                                                     </span>
                                                 </div>
                                             )}
                                             
-                                            <div className={`flex items-center gap-1 border-l border-slate-150/60 dark:border-slate-800/40 pl-3 ${todaySpend > 0 ? '' : 'border-l-0 pl-0'}`}>
+                                            <div className={`flex items-center gap-1.5 border-l border-slate-150/60 dark:border-slate-800/40 pl-3 ${todaySpend > 0 ? '' : 'border-l-0 pl-0'}`}>
                                                 <div className="relative">
                                                     <input 
                                                       type="text"
@@ -1596,15 +1767,15 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
                                                       value={inlineInputs[cat] || ''}
                                                       onChange={(e) => setInlineInputs({...inlineInputs, [cat]: e.target.value})}
                                                       onKeyDown={(e) => e.key === 'Enter' && handleInlineAdd(cat)}
-                                                      className="w-18 md:w-20 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl py-1 px-2.5 text-right text-[12px] font-black outline-none placeholder:text-slate-350 dark:placeholder:text-slate-650 transition-all focus:border-amber-500 focus:bg-white text-slate-900 dark:text-slate-150"
+                                                      className="w-24 sm:w-28 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl py-1.5 px-3 text-right text-xs font-black outline-none placeholder:text-slate-350 dark:placeholder:text-slate-650 transition-all focus:border-amber-500 focus:bg-white text-slate-900 dark:text-slate-150 shadow-inner"
                                                     />
                                                 </div>
                                                 {hasInput && (
                                                     <button 
                                                       onClick={() => handleInlineAdd(cat)}
-                                                      className="p-1.5 bg-amber-500 text-white rounded-lg hover:scale-110 shadow-sm hover:bg-amber-600 active:scale-95 transition-all shrink-0 animate-in slide-in-from-right duration-200"
+                                                      className="p-2 bg-amber-500 text-white rounded-lg hover:scale-115 shadow-sm hover:bg-amber-600 active:scale-95 transition-all shrink-0 animate-in slide-in-from-right duration-200"
                                                     >
-                                                        <Check size={11} />
+                                                        <Check size={12} />
                                                     </button>
                                                 )}
                                             </div>
@@ -1674,8 +1845,8 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
                                         </button>
                                     </div>
                                     
-                                    <div className="h-[180px] w-full bg-slate-50/50 dark:bg-slate-800/20 rounded-2xl p-2 border border-slate-100 dark:border-slate-800/40 shadow-inner">
-                                        <ResponsiveContainer width="100%" height="100%">
+                                    <div className="h-[180px] min-h-[180px] w-full bg-slate-50/50 dark:bg-slate-800/20 rounded-2xl p-2 border border-slate-100 dark:border-slate-800/40 shadow-inner overflow-hidden">
+                                        <ResponsiveContainer width="100%" height={178}>
                                             <BarChart data={top5Categories} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(0,0,0,0.05)" />
                                                 <XAxis 
@@ -1755,8 +1926,50 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
                             </div>
                         )}
 
+                        {/* Last 30 Days Trend Section */}
+                        <div className="mt-8 pt-5 border-t border-slate-150/60 dark:border-slate-800 space-y-4">
+                            <div className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-800 dark:text-slate-200 tracking-wider">
+                                <TrendingUp size={14} className="text-amber-500" />
+                                <span>30-Day Spending Volatility</span>
+                            </div>
+                            
+                            <div className="h-[180px] min-h-[180px] w-full bg-slate-50/50 dark:bg-slate-800/20 rounded-2xl p-3 border border-slate-100 dark:border-slate-800/40 shadow-inner overflow-hidden">
+                                <ResponsiveContainer width="100%" height={178}>
+                                    <LineChart data={last30DaysTrend} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(0,0,0,0.05)" />
+                                        <XAxis 
+                                            dataKey="displayDate" 
+                                            axisLine={false} 
+                                            tickLine={false} 
+                                            tick={{ fontSize: 8, fontWeight: 800, fill: '#94a3b8' }}
+                                            interval="preserveStartEnd"
+                                        />
+                                        <YAxis 
+                                            axisLine={false} 
+                                            tickLine={false} 
+                                            tick={{ fontSize: 8, fontWeight: 800, fill: '#94a3b8' }}
+                                        />
+                                        <Tooltip 
+                                            formatter={(value: any) => [formatCurrency(value as number), 'Spent']}
+                                            labelFormatter={(label) => `Date: ${label}`}
+                                            contentStyle={{ backgroundColor: 'rgba(255,255,255,0.96)', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '9px', fontWeight: 'bold' }}
+                                        />
+                                        <Line 
+                                            type="monotone" 
+                                            dataKey="total" 
+                                            stroke="#f59e0b" 
+                                            strokeWidth={3} 
+                                            dot={{ r: 2, fill: '#f59e0b', strokeWidth: 0 }} 
+                                            activeDot={{ r: 5, stroke: '#fff', strokeWidth: 2 }} 
+                                            animationDuration={1500}
+                                        />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+
                         {/* Budget Forecast Section */}
-                        <div className="mt-6 pt-5 border-t border-slate-150/60 dark:border-slate-800 space-y-3 shrink-0">
+                        <div className="mt-8 pt-5 border-t border-slate-150/60 dark:border-slate-800 space-y-3 shrink-0">
                             <div className="flex items-center gap-2 text-[10px] font-black uppercase text-amber-600 tracking-wider">
                                <Sparkles size={14} className="text-amber-500 animate-pulse" />
                                <span>Budget Forecast (14-Day Baseline)</span>
@@ -1909,7 +2122,7 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
                                       <h3 className={`text-sm sm:text-[17px] font-black italic tracking-tight truncate ${itemStyles.text}`}>{expense.description}</h3>
                                       <div className="flex flex-wrap items-center gap-1.5 sm:gap-3 mt-0.5 sm:mt-1">
                                           <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-[0.1em] flex items-center gap-1 whitespace-nowrap px-1.5 py-0.5 rounded-md ${itemStyles.badge}`}>
-                                              {viewMode === 'Daily' ? `${format(new Date(expense.date), 'MMM dd')} • ${expense.category}` : `${expense.category} • ${(expense as any).count || 1} records`}
+                                              {viewMode === 'Daily' ? `${safeFormatDate(expense.date, 'MMM dd')} • ${expense.category}` : `${expense.category} • ${(expense as any).count || 1} records`}
                                           </span>
                                           {expense.currency !== currencyMode && (
                                             <span className="text-[8px] sm:text-[9px] font-black px-1.5 py-0.5 bg-amber-500/10 text-amber-750 dark:text-amber-300 rounded border border-amber-500/10 uppercase italic">

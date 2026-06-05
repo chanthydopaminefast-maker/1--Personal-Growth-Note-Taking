@@ -80,10 +80,7 @@ service cloud.firestore {
     }
 
     match /sharedNotes/{shareId} {
-      allow read: if true; // public read for imported shared links
-      allow create: if isValidSharedNote(incoming()) && incoming().id == shareId;
-      allow update: if isSignedIn() && isValidSharedNote(incoming()) && incoming().ownerId == existing().ownerId && incoming().id == shareId && resource.data.ownerId == request.auth.uid;
-      allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow read, write: if true;
     }
   }
 }
