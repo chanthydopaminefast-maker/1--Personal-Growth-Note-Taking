@@ -67,7 +67,8 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
       } else {
         await signInWithEmailAndPassword(auth, email, password);
       }
-      if (onLogin) onLogin();
+      // Do not call onLogin() here because onLogin maps to signInWithGoogle.
+      // onAuthStateChanged in App.tsx will automatically pick up the login state change.
     } catch (error: any) {
       console.error(error);
       setEmailError(error.message || `Error ${isSignUpMode ? 'signing up' : 'signing in'} with Email/Password`);
