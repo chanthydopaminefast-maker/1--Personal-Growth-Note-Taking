@@ -1,15 +1,16 @@
 import express from 'express';
-import { createServer as createViteServer } from 'vite';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import fs from 'fs';
+import { createProxyMiddleware } from 'http-proxy-middleware';
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
+
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok" });
+  });
 
   app.use(express.json({ limit: '10mb' }));
 
@@ -75,15 +76,23 @@ async function startServer() {
     }
   });
 
-  // Vite Middleware
-  if (process.env.NODE_ENV !== 'production') {
+
+
+  // Serve compiled production files if dist folder exists, fallback to dynamic Vite dev server in development
+  const distPath = path.join(process.cwd(), 'dist');
+  const hasDist = fs.existsSync(path.join(distPath, 'index.html'));
+
+  if (process.env.NODE_ENV !== "production") {
+    console.log('Starting development server via dynamic Vite import...');
+    // Dynamically import Vite to prevent runtime import exceptions in pruned production nodes
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    console.log('Serving production static build from:', distPath);
     app.use(express.static(distPath));
     app.get('*all', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
