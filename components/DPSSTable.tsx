@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Plus, Trash2, Calendar, AlignLeft, AlignCenter, AlignRight, Highlighter, Type, Settings2, MousePointer2, Minus, Layout, Square, Quote, FileUp, FileDown, Loader2, Wand2, Menu, ChevronLeft, FileText, ChevronDown, ChevronRight, Table, Grid3X3, Columns, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Palette, Italic, Underline, Strikethrough, Indent, Outdent, List, ListOrdered, CheckSquare, MoreHorizontal, Download, Maximize2, Minimize2, Search, Archive, Folder, Star } from 'lucide-react';
+import { Plus, Trash2, Calendar, AlignLeft, AlignCenter, AlignRight, Highlighter, Type, Settings2, MousePointer2, Minus, Layout, Square, Quote, FileUp, FileDown, Loader2, Wand2, Menu, ChevronLeft, FileText, ChevronDown, ChevronRight, Table, Grid3X3, Columns, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Palette, Italic, Underline, Strikethrough, Indent, Outdent, List, ListOrdered, CheckSquare, MoreHorizontal, Download, Maximize2, Minimize2, Search, Archive, Folder, Star, Share2 } from 'lucide-react';
 import { AppData, DPSSTopic } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { callNeuralEngine } from '../services/neuralEngine';
@@ -16,6 +16,9 @@ interface DPSSTableProps {
 
 export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTopic, onOpenSidebar }) => {
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
+  const [sharingTopicId, setSharingTopicId] = useState<string | null>(null);
+  const [generatedShareLink, setGeneratedShareLink] = useState<string | null>(null);
+  const [isCopied, setIsCopied] = useState(false);
   const [pickerPos, setPickerPos] = useState<{ x: number, y: number } | null>(null);
   const [showAllTextColors, setShowAllTextColors] = useState(false);
   const [showAllHighlightColors, setShowAllHighlightColors] = useState(false);
@@ -857,6 +860,39 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       onUpdateTopic(updated, root || undefined);
     } else {
       onUpdate({ ...data, dpssTopics: updated });
+    }
+  };
+
+  const handleShareTopic = async (topic: any) => {
+    setSharingTopicId(topic.id);
+    try {
+      const { createSharedNote } = await import('../services/firebase');
+      const storedUser = localStorage.getItem('dps_user');
+      let userName = 'Chanthy';
+      let userId = 'unknown';
+      if (storedUser) {
+        try {
+          const u = JSON.parse(storedUser);
+          userName = u.name || 'Chanthy';
+          userId = u.uid || 'unknown';
+        } catch(e){}
+      }
+      
+      const shareId = await createSharedNote(
+        userId,
+        userName,
+        'self-learning',
+        topic.title,
+        topic
+      );
+      
+      const link = window.location.origin + window.location.pathname + '?share=' + shareId;
+      setGeneratedShareLink(link);
+    } catch (error) {
+      console.error(error);
+      alert("Failed to generate shared link. Please check your internet connection.");
+    } finally {
+      setSharingTopicId(null);
     }
   };
 
@@ -1843,6 +1879,18 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
               </button>
 
               <button 
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  handleShareTopic(topic);
+                }} 
+                disabled={sharingTopicId === topic.id}
+                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-orange-500 transition-all disabled:opacity-40"
+                title="Share Topic Link (Email / Copy)"
+              >
+                <Share2 size={13} className={sharingTopicId === topic.id ? "animate-spin" : ""} />
+              </button>
+
+              <button 
                 onClick={(e) => { e.stopPropagation(); deleteTopic(topic.id); }} 
                 className="p-1 hover:bg-red-50/50 dark:hover:bg-red-950/20 rounded text-slate-400 hover:text-red-500 transition-all"
                 title="Delete Topic"
@@ -2329,6 +2377,17 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                     </div>
 
                     <div className="ml-auto flex items-center gap-2 flex-wrap justify-end">
+                      {selectedTopic && (
+                        <button 
+                          onClick={() => handleShareTopic(selectedTopic)}
+                          disabled={sharingTopicId === selectedTopic.id}
+                          className="flex items-center gap-2 px-3 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-600 border border-orange-200 rounded-lg text-xs font-bold shadow-sm transition-all font-sans shrink-0 disabled:opacity-50"
+                          title="Share this note"
+                        >
+                          <Share2 size={14} className={sharingTopicId === selectedTopic.id ? "animate-spin" : ""} />
+                          <span className="hidden sm:inline">Share</span>
+                        </button>
+                      )}
                       <button 
                         onClick={enhanceWithAI} 
                         onMouseDown={(e) => e.preventDefault()}
@@ -3086,6 +3145,89 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
             </div>
         )}
       </div>
+
+      {generatedShareLink && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md flex items-center justify-center p-4 z-[99999] animate-fade-in font-sans">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-[24px] max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-orange-500">
+              <Share2 size={24} className="stroke-[2.5]" />
+              <h3 className="text-sm font-black tracking-wider uppercase text-slate-800 dark:text-slate-100">Topic Share Link Ready</h3>
+            </div>
+            
+            <p className="text-xs text-slate-500">
+              Anyone with this link can view and import exactly this study topic folder structure (including all nesting notes) to their portal!
+            </p>
+            
+            <div className="flex items-center bg-slate-50 dark:bg-slate-950 p-3 rounded-2xl border border-slate-200/60 dark:border-slate-800">
+              <input 
+                type="text" 
+                readOnly 
+                value={generatedShareLink} 
+                className="flex-1 bg-transparent text-xs text-slate-705 dark:text-slate-300 outline-none select-all truncate pr-2 font-mono"
+              />
+              <button 
+                onClick={() => {
+                  navigator.clipboard.writeText(generatedShareLink);
+                  setIsCopied(true);
+                  setTimeout(() => setIsCopied(false), 2000);
+                }}
+                className="h-8 px-4 bg-orange-500 hover:bg-orange-600 active:scale-95 text-white text-[10px] uppercase font-black tracking-widest rounded-xl transition-all"
+              >
+                {isCopied ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+            
+            <div className="flex justify-between items-center pt-2">
+              <button 
+                onClick={() => {
+                  const searchParams = new URL(generatedShareLink).searchParams;
+                  const shareId = searchParams.get('share');
+                  if (!shareId) return;
+                  
+                  const findNode = (nodes: any[], id: string): any => {
+                     for (let node of nodes) {
+                        if (node.id === id) return node;
+                        if (node.children) {
+                           const found = findNode(node.children, id);
+                           if (found) return found;
+                        }
+                     }
+                     return null;
+                  };
+                  
+                  const targetTopic = findNode(topics, sharingTopicId);
+                  
+                  if (targetTopic) {
+                    const blob = new Blob([JSON.stringify(targetTopic, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `${targetTopic.title.replace(/[^a-z0-9]/gi, '_')}.json`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                  } else {
+                    alert("Topic content not found for download.");
+                  }
+                }}
+                className="h-10 px-5 flex items-center gap-2 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700/80 rounded-xl text-[10px] uppercase font-black tracking-widest transition-all"
+              >
+                <Download size={14} /> Download File (.json)
+              </button>
+              <button 
+                onClick={() => {
+                  setGeneratedShareLink(null);
+                  setSharingTopicId(null);
+                }}
+                className="h-10 px-5 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-700/80 rounded-xl text-[10px] uppercase font-black tracking-widest transition-all"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
