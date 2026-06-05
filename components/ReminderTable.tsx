@@ -112,16 +112,59 @@ const ReminderTable: React.FC<ReminderTableProps> = ({
     displayedReminders = activeReminders;
   }
 
+  const parseStoredDate = (str: string): Date | null => {
+    if (!str) return null;
+    str = str.trim();
+    // Case 1: already MMMM d, yyyy (e.g., July 26, 2026)
+    const parsedWord = Date.parse(str);
+    if (!isNaN(parsedWord)) {
+      return new Date(parsedWord);
+    }
+    // Case 2: dd/MM/yy
+    if (str.includes('/')) {
+      const parts = str.split('/');
+      if (parts.length === 3) {
+        const d = Number(parts[0]);
+        const m = Number(parts[1]) - 1;
+        let y = Number(parts[2]);
+        if (y < 100) y += 2000;
+        const date = new Date(y, m, d);
+        if (!isNaN(date.getTime())) return date;
+      }
+    }
+    // Case 3: yyyy-mm-dd
+    if (str.includes('-')) {
+      const parts = str.split('-');
+      if (parts.length === 3) {
+        const y = Number(parts[0]);
+        const m = Number(parts[1]) - 1;
+        const d = Number(parts[2]);
+        const date = new Date(y, m, d);
+        if (!isNaN(date.getTime())) return date;
+      }
+    }
+    return null;
+  };
+
   const isoToDisplay = (iso: string) => {
       if (!iso) return '';
-      const [y, m, d] = iso.split('-');
-      return `${d}/${m}/${y.slice(2)}`;
+      const parsed = parseStoredDate(iso);
+      if (parsed) {
+        return format(parsed, 'MMMM d, yyyy');
+      }
+      return iso;
   };
 
   const displayToIso = (display: string) => {
-      if (!display || !display.includes('/')) return '';
-      const [d, m, y] = display.split('/');
-      return `20${y}-${m}-${d}`;
+      if (!display) return '';
+      const parsed = parseStoredDate(display);
+      if (parsed) {
+        const y = parsed.getFullYear();
+        const m = String(parsed.getMonth() + 1).padStart(2, '0');
+        const d = String(parsed.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+      }
+      return '';
   };
 
   const updateField = (id: string, field: string, value: any) => {
@@ -129,7 +172,7 @@ const ReminderTable: React.FC<ReminderTableProps> = ({
     
     // Auto-fill deadline if task name is entered and deadline is empty
     if (field === 'name' && value && !students.find(s => s.id === id)?.deadline) {
-        updates.deadline = format(new Date(), 'dd/MM/yy');
+        updates.deadline = format(new Date(), 'MMMM d, yyyy');
     }
     
     onUpdateStudent(id, updates);
@@ -145,7 +188,7 @@ const ReminderTable: React.FC<ReminderTableProps> = ({
       if (s.recurring === 'Weekly') newDeadlineDate.setDate(newDeadlineDate.getDate() + 7);
       if (s.recurring === 'Monthly') newDeadlineDate.setMonth(newDeadlineDate.getMonth() + 1);
       
-      const newDeadline = format(newDeadlineDate, 'dd/MM/yy');
+      const newDeadline = format(newDeadlineDate, 'MMMM d, yyyy');
       
       setTimeout(() => {
         onAddStudent({
@@ -292,14 +335,16 @@ const ReminderTable: React.FC<ReminderTableProps> = ({
           <table className="w-full border-collapse table-fixed min-w-[900px]">
             <thead className="sticky top-0 z-40 bg-white/10 backdrop-blur-xl">
               <tr className="border-b border-white/20">
-                <th className="w-24 h-14 text-[10px] font-black text-slate-900 uppercase tracking-widest">#</th>
-                <th className="w-[300px] text-left px-4 text-[10px] font-black text-slate-900 uppercase tracking-widest pt-5">
+                <th className="w-16 h-14 text-[10px] font-black text-slate-900 uppercase tracking-widest">#</th>
+                <th className="w-[30%] text-left px-4 text-[10px] font-black text-slate-900 uppercase tracking-widest pt-5">
                   Task / Item
                 </th>
                 <th className="w-40 text-center text-[10px] font-black text-slate-900 uppercase tracking-widest">Deadline</th>
-                <th className="w-40 text-center text-[10px] font-black text-slate-900 uppercase tracking-widest">Status</th>
+                <th className="w-32 text-center text-[10px] font-black text-slate-900 uppercase tracking-widest">Priority</th>
+                <th className="w-32 text-center text-[10px] font-black text-slate-900 uppercase tracking-widest">Recurring</th>
+                <th className="w-36 text-center text-[10px] font-black text-slate-900 uppercase tracking-widest">Status</th>
                 <th className="text-left px-4 text-[10px] font-black text-slate-900 uppercase tracking-widest">Notes</th>
-                <th className="w-20 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Del</th>
+                <th className="w-16 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Del</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/10 font-sans">
@@ -378,33 +423,6 @@ const ReminderTable: React.FC<ReminderTableProps> = ({
                         <CheckSquare size={14} />
                       </button>
                     </div>
-
-                      {/* Priority and Recurring configuration */}
-                      <div className="mt-3 flex items-center gap-3">
-                        <select
-                          value={s.priority || 'Medium'}
-                          onChange={e => updateField(s.id, 'priority', e.target.value)}
-                          className={`text-[9px] font-black uppercase tracking-widest outline-none bg-transparent cursor-pointer transition-colors ${
-                            s.priority === 'High' ? 'text-red-500' :
-                            s.priority === 'Low' ? 'text-slate-400' :
-                            'text-amber-500'
-                          }`}
-                        >
-                          <option value="High">🔴 HIGH PRIORITY</option>
-                          <option value="Medium">🟡 MED PRIORITY</option>
-                          <option value="Low">⚪ LOW PRIORITY</option>
-                        </select>
-                        <select
-                          value={s.recurring || 'None'}
-                          onChange={e => updateField(s.id, 'recurring', e.target.value)}
-                          className="text-[9px] font-black uppercase tracking-widest text-indigo-500 outline-none bg-transparent cursor-pointer transition-colors"
-                        >
-                          <option value="None">↻ ONCE</option>
-                          <option value="Daily">↻ DAILY</option>
-                          <option value="Weekly">↻ WEEKLY</option>
-                          <option value="Monthly">↻ MONTHLY</option>
-                        </select>
-                      </div>
 
                     {/* Integrated subtask management */}
                     {(() => {
@@ -491,7 +509,7 @@ const ReminderTable: React.FC<ReminderTableProps> = ({
                   </td>
                   <td className="px-4">
                     <div className="flex items-center justify-center gap-2 px-3 py-1.5 bg-white/30 rounded-lg border border-white/20">
-                        <Calendar size={12} className="text-orange-400" />
+                        <Calendar size={12} className="text-orange-400 hover:scale-110 transition-transform cursor-pointer" />
                         <input 
                           type="date"
                           value={displayToIso(s.deadline || '')} 
@@ -502,6 +520,37 @@ const ReminderTable: React.FC<ReminderTableProps> = ({
                           }}
                           className="w-full bg-transparent font-black text-slate-600 outline-none text-center cursor-pointer"
                         />
+                    </div>
+                  </td>
+                  <td className="px-2 text-center">
+                    <div className="flex items-center justify-center">
+                      <select
+                        value={s.priority || 'Medium'}
+                        onChange={e => updateField(s.id, 'priority', e.target.value)}
+                        className={`text-[10px] font-black uppercase tracking-widest outline-none bg-white/50 border border-slate-100 rounded-lg py-1 px-1.5 text-center cursor-pointer transition-colors ${
+                          s.priority === 'High' ? 'text-red-500 border-red-100 bg-red-50/10' :
+                          s.priority === 'Low' ? 'text-slate-405 border-slate-200 bg-slate-50/10' :
+                          'text-amber-500 border-amber-100 bg-amber-50/10'
+                        }`}
+                      >
+                        <option value="High">🔴 HIGH</option>
+                        <option value="Medium">🟡 MED</option>
+                        <option value="Low">⚪ LOW</option>
+                      </select>
+                    </div>
+                  </td>
+                  <td className="px-2 text-center">
+                    <div className="flex items-center justify-center">
+                      <select
+                        value={s.recurring || 'None'}
+                        onChange={e => updateField(s.id, 'recurring', e.target.value)}
+                        className="text-[10px] font-black uppercase tracking-widest text-indigo-500 outline-none bg-white/50 border border-indigo-100 rounded-lg py-1 px-1.5 text-center cursor-pointer transition-colors"
+                      >
+                        <option value="None">↻ ONCE</option>
+                        <option value="Daily">↻ DAILY</option>
+                        <option value="Weekly">↻ WEEKLY</option>
+                        <option value="Monthly">↻ MONTHLY</option>
+                      </select>
                     </div>
                   </td>
                   <td className="px-4 text-center">
@@ -557,7 +606,7 @@ const ReminderTable: React.FC<ReminderTableProps> = ({
               ))}
               {activeReminders.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-20 text-center">
+                  <td colSpan={8} className="py-20 text-center">
                     <div className="flex flex-col items-center gap-3 opacity-20">
                       <Bell size={48} />
                       <p className="text-xs font-black uppercase tracking-widest">No reminders set</p>

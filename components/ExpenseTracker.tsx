@@ -748,7 +748,7 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
               <p>${viewMode} Statement &mdash; ${activeViewLabel}</p>
             </div>
             <div class="header-meta">
-              Generated: ${new Date().toLocaleDateString()}<br/>
+              Generated: ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}<br/>
               Active Base standard: ${currencyMode}<br/>
               Cambodian Exchange Rate: 1 USD = ${EXCHANGE_RATE.toLocaleString()} KHR
             </div>

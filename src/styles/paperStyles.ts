@@ -8,11 +8,11 @@ export interface PaperStyleDefinition {
 }
 
 export const PAPER_STYLES: PaperStyleDefinition[] = [
-  { id: 'none', name: 'Clean Glass', className: 'bg-white/10 backdrop-blur-3xl border border-white/20', previewColor: 'rgba(255,255,255,0.2)' },
+  { id: 'none', name: 'Clean Glass', className: 'bg-white/85 backdrop-blur-3xl border border-white/30 text-slate-800 shadow-xl', previewColor: 'rgba(255,255,255,0.85)' },
   { id: 'ruled', name: 'Classic Ruled', className: 'paper-ruled shadow-xl', previewColor: '#f8fafc' },
   { id: 'grid', name: 'Math Grid', className: 'paper-grid shadow-xl', previewColor: '#f1f5f9' },
   { id: 'dots', name: 'Bullet Dot', className: 'paper-dots shadow-xl', previewColor: '#f8fafc' },
-  { id: 'stars', name: 'Stardust', className: 'paper-stardust shadow-xl', previewColor: '#1e293b' },
+  { id: 'stars', name: 'Stardust', className: 'paper-stardust shadow-xl text-slate-800', previewColor: '#f5f3ff' },
   { id: 'roses', name: 'Rose Garden', className: 'bg-rose-50 border- rose-200/50 shadow-xl', previewColor: '#fff1f2' },
   { id: 'colorful', name: 'Bright Pop', className: 'bg-white border-8 border-double border-pink-200 ring-8 ring-indigo-50 shadow-2xl', previewColor: '#fdf2f8' },
   { id: 'floral', name: 'Elegant Floral', className: 'bg-[#fafaf9] border-t-8 border-emerald-100 shadow-xl', previewColor: '#f5f5f4' },

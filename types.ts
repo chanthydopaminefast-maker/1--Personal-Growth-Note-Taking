@@ -58,6 +58,8 @@ export interface AppSettings {
   fontColor?: string;
   dateTextColor?: string;
   paperStyle?: string;
+  tableBorderThickness?: number;
+  tableBorderColor?: string;
   dopamineFast?: any;
   dopamineFastsHistory?: any[];
   weeklyAIInsight?: Record<string, string>;
@@ -117,6 +119,7 @@ export interface DPSSTopic {
   deletedAt?: string; // Soft delete support
   children?: DPSSTopic[];
   attachments?: { id: string; name: string; url: string; type: string }[];
+  isArchived?: boolean;
 }
 
 export interface Habit {

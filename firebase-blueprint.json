@@ -10,6 +10,20 @@
         "attendance": { "type": "object" },
         "dailyTasks": { "type": "object" }
       }
+    },
+    "SharedNote": {
+      "title": "SharedNote",
+      "description": "Shared self-learning, journal or note-taking entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "type": { "type": "string" },
+        "title": { "type": "string" },
+        "payload": { "type": "object" },
+        "createdAt": { "type": "string" }
+      }
     }
   },
   "firestore": {
@@ -40,6 +54,10 @@
     "/users/{userId}/dailyNotes/{date}": {
       "schema": "object",
       "description": "Daily note content for a date"
+    },
+    "/sharedNotes/{shareId}": {
+      "schema": "SharedNote",
+      "description": "Shared self-learning, journal or note-taking entry"
     }
   }
 }

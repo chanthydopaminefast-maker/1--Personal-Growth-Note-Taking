@@ -130,7 +130,7 @@ const ReflectionCard: React.FC<ReflectionCardProps> = ({
     exportContainer.innerHTML = `
       <div style="margin-bottom: 30px; border-bottom: 3px solid #ea580c; padding-bottom: 20px;">
         <h1 style="font-size: 24pt; font-weight: 900; color: ${isDark ? '#f97316' : '#0f172a'}; margin: 0;">${title}</h1>
-        <p style="font-size: 10pt; color: ${isDark ? '#94a3b8' : '#64748b'}; margin-top: 5px; text-transform: uppercase; letter-spacing: 2px;">Strategic Reflection Summary • ${new Date().toLocaleDateString()}</p>
+        <p style="font-size: 10pt; color: ${isDark ? '#94a3b8' : '#64748b'}; margin-top: 5px; text-transform: uppercase; letter-spacing: 2px;">Strategic Reflection Summary • ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
       </div>
       <div class="reflection-content" style="line-height: 1.6; font-size: 11.5pt;">
         ${summaryRef.current.innerHTML}
@@ -766,7 +766,7 @@ const ReflectionCard: React.FC<ReflectionCardProps> = ({
               className="bg-black/60 border border-white/10 p-8 rounded-[40px] shadow-2xl relative overflow-hidden"
             >
               <div className="absolute top-0 right-0 px-6 py-2 bg-white/5 text-white/30 text-[10px] font-black uppercase tracking-widest rounded-bl-[20px]">
-                {new Date(archive.archivedAt!).toLocaleDateString()}
+                {new Date(archive.archivedAt!).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
               </div>
               <h3 className="text-xl font-black text-orange-400 uppercase italic mb-4">{archive.title}</h3>
               <div className="text-white/60 text-lg leading-relaxed whitespace-pre-wrap italic">

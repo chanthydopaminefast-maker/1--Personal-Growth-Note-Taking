@@ -258,7 +258,7 @@ ${historyText ? `PREVIOUS CONVERSATION HISTORY:\n${historyText}\n\n` : ''}User's
                     >
                       <div className="flex-1 min-w-0 pr-4">
                         <p className="font-semibold text-slate-800 truncate text-sm">{session.title || 'Conversation'}</p>
-                        <p className="text-xs text-slate-500 mt-1">{new Date(session.updatedAt).toLocaleDateString()} {new Date(session.updatedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+                        <p className="text-xs text-slate-500 mt-1">{new Date(session.updatedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })} {new Date(session.updatedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
                       </div>
                       <button 
                         onClick={(e) => deleteSession(e, session.id)}

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AppData, JournalEntry, ReflectionData } from '../types';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameDay, addDays, subDays, subMonths, addMonths, startOfWeek, endOfWeek } from 'date-fns';
-import { CheckCircle2, ChevronLeft, ChevronRight, Calendar as CalendarIcon, BookOpen, Clock, X, Target, Quote, Heart, Sparkles, Footprints, Zap, ShieldCheck, Lightbulb, Activity, Circle, CheckSquare, Palette, RefreshCw } from 'lucide-react';
+import { CheckCircle2, ChevronLeft, ChevronRight, Calendar as CalendarIcon, BookOpen, Clock, X, Target, Quote, Heart, Sparkles, Footprints, Zap, ShieldCheck, Lightbulb, Activity, Circle, CheckSquare, Palette, RefreshCw, Share2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { PAPER_STYLES } from '../src/styles/paperStyles';
 import { RichTextDiv } from './FloatingToolbar';
@@ -46,6 +46,44 @@ const JournalBlock: React.FC<JournalBlockProps> = ({ title, icon, children, bgCo
   // AI Journal Insight States
   const [weeklyInsightLoading, setWeeklyInsightLoading] = useState<boolean>(false);
   const [weeklyInsightError, setWeeklyInsightError] = useState<string | null>(null);
+
+  // Share Journal States
+  const [isSharingJournal, setIsSharingJournal] = useState(false);
+  const [generatedShareLink, setGeneratedShareLink] = useState<string | null>(null);
+  const [isCopied, setIsCopied] = useState(false);
+
+  const handleShareJournal = async () => {
+    setIsSharingJournal(true);
+    try {
+      const { createSharedNote } = await import('../services/firebase');
+      const storedUser = localStorage.getItem('dps_user');
+      let userName = 'Chanthy';
+      let userId = 'unknown';
+      if (storedUser) {
+        try {
+          const u = JSON.parse(storedUser);
+          userName = u.name || 'Chanthy';
+          userId = u.uid || 'unknown';
+        } catch(e){}
+      }
+      
+      const shareId = await createSharedNote(
+        userId,
+        userName,
+        'journal',
+        `Journal: ${format(selectedDate, 'MMM d, yyyy')}`,
+        currentEntry
+      );
+      
+      const link = window.location.origin + window.location.pathname + '?share=' + shareId;
+      setGeneratedShareLink(link);
+    } catch (error) {
+      console.error(error);
+      alert("Failed to generate shared link.");
+    } finally {
+      setIsSharingJournal(false);
+    }
+  };
 
   const generateDailyPrompt = async (force: boolean = false) => {
     if (promptLoading) return;
@@ -337,6 +375,15 @@ Keep the advice direct, mature, and completely focused on human performance. Avo
         </div>
 
         <div className="flex items-center gap-3">
+          <button 
+            onClick={handleShareJournal}
+            disabled={isSharingJournal}
+            className="p-3 bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 rounded-2xl hover:bg-emerald-200 dark:hover:bg-emerald-900 transition-all active:scale-95 flex items-center justify-center disabled:opacity-50"
+            title="Share Today's Journal Entry"
+          >
+            <Share2 size={20} className={isSharingJournal ? "animate-spin" : ""} />
+          </button>
+
           <button 
             onClick={() => setShowCalendar(true)}
             className="p-3 bg-emerald-600 text-white rounded-2xl hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/20 active:scale-95 flex items-center justify-center"
@@ -970,6 +1017,49 @@ Keep the advice direct, mature, and completely focused on human performance. Avo
           background: rgba(16, 185, 129, 0.5);
         }
       `}</style>
+
+      {generatedShareLink && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md flex items-center justify-center p-4 z-[99999] animate-fade-in font-sans">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-[24px] max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-emerald-600">
+              <Share2 size={24} className="stroke-[2.5]" />
+              <h3 className="text-sm font-black tracking-wider uppercase text-slate-800 dark:text-slate-100">Journal Entry Link Ready</h3>
+            </div>
+            
+            <p className="text-xs text-slate-500">
+              Anyone with this link can view and import exactly your custom Daily Journal Entry for this specific date!
+            </p>
+            
+            <div className="flex items-center bg-slate-50 dark:bg-slate-950 p-3 rounded-2xl border border-slate-200/60 dark:border-slate-800">
+              <input 
+                type="text" 
+                readOnly 
+                value={generatedShareLink} 
+                className="flex-1 bg-transparent text-xs text-slate-705 dark:text-slate-300 outline-none select-all truncate pr-2 font-mono"
+              />
+              <button 
+                onClick={() => {
+                  navigator.clipboard.writeText(generatedShareLink);
+                  setIsCopied(true);
+                  setTimeout(() => setIsCopied(false), 2000);
+                }}
+                className="h-8 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-[10px] uppercase font-black tracking-widest rounded-xl transition-all"
+              >
+                {isCopied ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+            
+            <div className="flex justify-end pt-2">
+              <button 
+                onClick={() => setGeneratedShareLink(null)}
+                className="h-10 px-5 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-700/80 rounded-xl text-[10px] uppercase font-black tracking-widest transition-all"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

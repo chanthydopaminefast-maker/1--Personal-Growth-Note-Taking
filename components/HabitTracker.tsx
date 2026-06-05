@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { RichTextDiv } from './FloatingToolbar';
 import { AppData, Habit, HabitCompletion } from '../types';
-import { CheckSquare, ChevronLeft, ChevronRight, Plus, Trash2, CheckCircle2, Zap, Maximize2, Minimize2, Calendar as CalendarIcon, Edit3, Target, Wand2, RefreshCw, X, Download, MessageSquare, Eye, EyeOff, Pin, PinOff } from 'lucide-react';
+import { CheckSquare, ChevronLeft, ChevronRight, Plus, Trash2, CheckCircle2, Zap, Maximize2, Minimize2, Calendar as CalendarIcon, Edit3, Target, Wand2, RefreshCw, X, Download, MessageSquare, Eye, EyeOff, Pin, PinOff, Share2 } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isToday, isSameDay, subDays, startOfWeek, endOfWeek, addMonths, subMonths, isSameMonth } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 import { motion, AnimatePresence } from 'motion/react';
@@ -83,13 +83,29 @@ export const HabitTracker: React.FC<HabitTrackerProps> = ({ data, onUpdate, onUp
     startWidth.current = disciplinesWidth;
   };
 
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setIsResizing(true);
+    if (e.touches.length > 0) {
+      startResizeX.current = e.touches[0].clientX;
+      startWidth.current = disciplinesWidth;
+    }
+  };
+
   React.useEffect(() => {
     if (!isResizing) return;
 
     const handleMouseMove = (e: MouseEvent) => {
       const deltaX = e.clientX - startResizeX.current;
-      const newWidth = Math.max(180, Math.min(600, startWidth.current + deltaX));
+      const newWidth = Math.max(160, Math.min(600, startWidth.current + deltaX));
       setDisciplinesWidth(newWidth);
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length > 0) {
+        const deltaX = e.touches[0].clientX - startResizeX.current;
+        const newWidth = Math.max(160, Math.min(600, startWidth.current + deltaX));
+        setDisciplinesWidth(newWidth);
+      }
     };
 
     const handleMouseUp = () => {
@@ -98,9 +114,13 @@ export const HabitTracker: React.FC<HabitTrackerProps> = ({ data, onUpdate, onUp
 
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('touchmove', handleTouchMove, { passive: true });
+    window.addEventListener('touchend', handleMouseUp);
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleMouseUp);
     };
   }, [isResizing]);
 
@@ -111,6 +131,46 @@ export const HabitTracker: React.FC<HabitTrackerProps> = ({ data, onUpdate, onUp
     date: string;
     noteText: string;
   } | null>(null);
+
+  // Note sharing states
+  const [isSharingNote, setIsSharingNote] = useState(false);
+  const [generatedShareLink, setGeneratedShareLink] = useState<string | null>(null);
+  const [isCopied, setIsCopied] = useState(false);
+
+  const handleShareNote = async () => {
+    setIsSharingNote(true);
+    const dateKey = format(selectedPlanningDate, 'yyyy-MM-dd');
+    const noteContent = notes[dateKey] || '';
+    try {
+      const { createSharedNote } = await import('../services/firebase');
+      const storedUser = localStorage.getItem('dps_user');
+      let userName = 'Chanthy';
+      let userId = 'unknown';
+      if (storedUser) {
+        try {
+          const u = JSON.parse(storedUser);
+          userName = u.name || 'Chanthy';
+          userId = u.uid || 'unknown';
+        } catch(e){}
+      }
+      
+      const shareId = await createSharedNote(
+        userId,
+        userName,
+        'daily-note',
+        `Daily Note: ${format(selectedPlanningDate, 'MMM d, yyyy')}`,
+        { date: dateKey, content: noteContent }
+      );
+      
+      const link = window.location.origin + window.location.pathname + '?share=' + shareId;
+      setGeneratedShareLink(link);
+    } catch (error) {
+      console.error(error);
+      alert("Failed to generate shared link.");
+    } finally {
+      setIsSharingNote(false);
+    }
+  };
 
   const openNoteDialog = (habit: Habit, dateStr: string) => {
     const existingNote = data.habitNotes?.[dateStr]?.[habit.id] || '';
@@ -1178,6 +1238,14 @@ export const HabitTracker: React.FC<HabitTrackerProps> = ({ data, onUpdate, onUp
                           <p className="text-[9px] font-black text-orange-500 uppercase tracking-widest leading-none mb-1">Architecture of Resolve</p>
                           <h3 className="text-xl font-black text-slate-800 uppercase italic tracking-tighter flex items-center gap-3">
                               {format(selectedPlanningDate, 'MMMM do, yyyy')}
+                              <button 
+                                onClick={handleShareNote}
+                                disabled={isSharingNote}
+                                className="text-slate-400 hover:text-orange-500 transition-all disabled:opacity-50"
+                                title="Share Today's Notes"
+                              >
+                                <Share2 size={20} className={isSharingNote ? "animate-spin" : ""} />
+                              </button>
                               <button onClick={() => { 
                                 const html = `<ul style="list-style-type: none; padding-left: 0; margin-top: 4px; margin-bottom: 4px;"><li style="display: flex; gap: 8px; align-items: flex-start;"><span contenteditable="false" class="task-checkbox" style="cursor: pointer; user-select: none;">⬜</span><span>&nbsp;</span></li></ul>`; 
                                 const dateKey = format(selectedPlanningDate, 'yyyy-MM-dd'); 
@@ -1306,6 +1374,14 @@ export const HabitTracker: React.FC<HabitTrackerProps> = ({ data, onUpdate, onUp
             {showControls ? <EyeOff size={14} className="text-orange-600" /> : <Eye size={14} className="text-orange-600" />}
             <span className="font-extrabold">{showControls ? 'Hide Panel' : 'Show Panel'}</span>
           </button>
+
+          <button
+            onClick={() => setIsAddingHabit(true)}
+            className="flex items-center justify-center bg-gradient-to-br from-orange-600 to-orange-400 hover:from-orange-700 hover:to-orange-500 text-white w-9 h-9 rounded-full shadow-md hover:shadow-lg transition-all active:scale-95 shrink-0"
+            title="Add New Mastery Habit"
+          >
+            <Plus size={16} strokeWidth={3} />
+          </button>
         </div>
 
         <AnimatePresence initial={false}>
@@ -1381,14 +1457,7 @@ export const HabitTracker: React.FC<HabitTrackerProps> = ({ data, onUpdate, onUp
         </AnimatePresence>
       </div>
 
-      {/* Floating Add Habit Button */}
-      <button
-        onClick={() => setIsAddingHabit(true)}
-        className="fixed bottom-8 right-8 z-[100] bg-zinc-900 text-white p-4 rounded-2xl shadow-2xl hover:bg-zinc-800 transition-all hover:scale-105 active:scale-95"
-        title="Add New Mastery Habit"
-      >
-        <Plus size={24} strokeWidth={3} />
-      </button>
+
 
       {/* AI Suggestions Dropdown/Panel */}
       <AnimatePresence>
@@ -1435,6 +1504,14 @@ export const HabitTracker: React.FC<HabitTrackerProps> = ({ data, onUpdate, onUp
                     <div>
                       <h3 className="text-sm font-black text-slate-900 tracking-tighter uppercase italic flex items-center gap-2">
                         Strategic Planning 
+                        <button 
+                          onClick={handleShareNote}
+                          disabled={isSharingNote}
+                          className="text-slate-400 hover:text-orange-500 transition-all disabled:opacity-50"
+                          title="Share Today's Notes"
+                        >
+                          <Share2 size={16} className={isSharingNote ? "animate-spin" : ""} />
+                        </button>
                         <button onClick={() => { 
                           const html = `<ul style="list-style-type: none; padding-left: 0; margin-top: 4px; margin-bottom: 4px;"><li style="display: flex; gap: 8px; align-items: flex-start;"><span contenteditable="false" class="task-checkbox" style="cursor: pointer; user-select: none;">⬜</span><span>&nbsp;</span></li></ul>`; 
                           const dateKey = format(selectedPlanningDate, 'yyyy-MM-dd'); 
@@ -1553,13 +1630,41 @@ export const HabitTracker: React.FC<HabitTrackerProps> = ({ data, onUpdate, onUp
             {/* Master Header */}
             <div className="flex bg-zinc-900/5 text-zinc-900 backdrop-blur-md sticky top-0 z-40 border-b border-zinc-200/50">
               <div 
-                className={`${isDisciplinesFrozen ? 'sticky left-0 z-50 shadow-[2px_0_10px_rgba(0,0,0,0.05)]' : 'relative'} transition-all bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl p-5 text-left shrink-0 border-r border-b border-zinc-200/50 flex items-center justify-between group/header`}
+                className={`${isDisciplinesFrozen ? 'sticky left-0 z-50 shadow-[2px_0_10px_rgba(0,0,0,0.05)]' : 'relative'} transition-all bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl p-4 md:p-5 text-left shrink-0 border-r border-b border-zinc-200/50 flex items-center justify-between group/header`}
                 style={{ width: disciplinesWidth }}
               >
-                <span className="text-sm md:text-base font-black uppercase tracking-[3px] text-orange-600 select-none">Disciplines</span>
+                <div className="flex flex-col gap-1 min-w-0">
+                  <span className="text-sm md:text-base font-black uppercase tracking-[3px] text-orange-600 select-none">Disciplines</span>
+                  
+                  {/* Small Manual width controls under title / label */}
+                  <div className="flex items-center gap-1 flex-wrap">
+                    <span className="text-[7.5px] font-black text-zinc-400 dark:text-zinc-500 uppercase tracking-widest mr-0.5 select-none font-mono">WIDTH:</span>
+                    <button 
+                      onClick={() => setDisciplinesWidth(180)}
+                      className={`px-2 py-0.5 rounded text-[8.5px] font-black transition-colors ${disciplinesWidth <= 180 ? 'bg-orange-600 text-white' : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-650 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'}`}
+                      title="Compact column size (180px)"
+                    >
+                      S
+                    </button>
+                    <button 
+                      onClick={() => setDisciplinesWidth(280)}
+                      className={`px-2 py-0.5 rounded text-[8.5px] font-black transition-colors ${disciplinesWidth > 180 && disciplinesWidth <= 280 ? 'bg-orange-600 text-white' : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-650 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'}`}
+                      title="Medium column size (280px)"
+                    >
+                      M
+                    </button>
+                    <button 
+                      onClick={() => setDisciplinesWidth(380)}
+                      className={`px-2 py-0.5 rounded text-[8.5px] font-black transition-colors ${disciplinesWidth > 280 ? 'bg-orange-600 text-white' : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-650 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700'}`}
+                      title="Wide column size (380px)"
+                    >
+                      L
+                    </button>
+                  </div>
+                </div>
                 
                 {/* Freeze/Unfreeze Button */}
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 shrink-0 ml-1">
                   <button
                     onClick={() => setIsDisciplinesFrozen(!isDisciplinesFrozen)}
                     className={`p-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
@@ -1576,11 +1681,12 @@ export const HabitTracker: React.FC<HabitTrackerProps> = ({ data, onUpdate, onUp
                   </button>
                 </div>
 
-                {/* Resizing drag handle */}
+                {/* Resizing drag handle with touch support */}
                 <div 
                   onMouseDown={handleResizeMouseDown}
-                  className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-orange-500/30 active:bg-orange-600 transition-colors z-[60] flex items-center justify-center group-hover/header:bg-zinc-300/60 dark:group-hover/header:bg-zinc-700/60"
-                  title="Drag to resize column"
+                  onTouchStart={handleTouchStart}
+                  className="absolute right-0 top-0 bottom-0 w-2.5 cursor-col-resize hover:bg-orange-500/30 active:bg-orange-600 transition-colors z-[60] flex items-center justify-center group-hover/header:bg-zinc-300/60 dark:group-hover/header:bg-zinc-700/60 touch-none"
+                  title="Drag or touch-drag to resize column"
                 >
                   <div className="w-[1.5px] h-6 bg-zinc-300 dark:bg-zinc-600 rounded"></div>
                 </div>
@@ -2144,6 +2250,49 @@ export const HabitTracker: React.FC<HabitTrackerProps> = ({ data, onUpdate, onUp
           </motion.div>
         )}
       </AnimatePresence>
+
+      {generatedShareLink && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md flex items-center justify-center p-4 z-[99999] animate-fade-in font-sans">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-[24px] max-w-md w-full shadow-2xl space-y-4 font-sans">
+            <div className="flex items-center gap-3 text-orange-500">
+              <Share2 size={24} className="stroke-[2.5]" />
+              <h3 className="text-sm font-black tracking-wider uppercase text-slate-800 dark:text-slate-100">Daily Note Share Link Ready</h3>
+            </div>
+            
+            <p className="text-xs text-slate-500">
+              Anyone with this link can view and import exactly this Daily Note into their active portal database!
+            </p>
+            
+            <div className="flex items-center bg-slate-50 dark:bg-slate-950 p-3 rounded-2xl border border-slate-200/60 dark:border-slate-800">
+              <input 
+                type="text" 
+                readOnly 
+                value={generatedShareLink} 
+                className="flex-1 bg-transparent text-xs text-slate-705 dark:text-slate-300 outline-none select-all truncate pr-2 font-mono"
+              />
+              <button 
+                onClick={() => {
+                  navigator.clipboard.writeText(generatedShareLink);
+                  setIsCopied(true);
+                  setTimeout(() => setIsCopied(false), 2000);
+                }}
+                className="h-8 px-4 bg-orange-500 hover:bg-orange-600 active:scale-95 text-white text-[10px] uppercase font-black tracking-widest rounded-xl transition-all"
+              >
+                {isCopied ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+            
+            <div className="flex justify-end pt-2">
+              <button 
+                onClick={() => setGeneratedShareLink(null)}
+                className="h-10 px-5 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-700/80 rounded-xl text-[10px] uppercase font-black tracking-widest transition-all"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

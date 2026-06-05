@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { AppSettings, CurrentUser } from '../types';
-import { X, Save, Settings2, Type, Baseline, Paintbrush, Check, Cloud, LogIn, LogOut, Image as ImageIcon, Trash2, FileText, Coins } from 'lucide-react';
+import { X, Save, Settings2, Type, Baseline, Paintbrush, Check, Cloud, LogIn, LogOut, Image as ImageIcon, Trash2, FileText, Coins, Table } from 'lucide-react';
 import { PAPER_STYLES } from '../src/styles/paperStyles';
 import { signInWithEmailAndPassword, auth } from '../services/firebase';
 
@@ -46,7 +46,9 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
     currency: settings?.currency || 'USD',
     exchangeRate: settings?.exchangeRate || 4000,
     backgroundImage: settings?.backgroundImage,
-    paperStyle: settings?.paperStyle || 'none'
+    paperStyle: settings?.paperStyle || 'none',
+    tableBorderThickness: settings?.tableBorderThickness || 2,
+    tableBorderColor: settings?.tableBorderColor || '#334155'
   });
 
   const [email, setEmail] = useState('');
@@ -372,6 +374,44 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
                                 </div>
                             </button>
                         ))}
+                    </div>
+                </div>
+            </div>
+
+            {/* Table Grid Settings */}
+            <div className="space-y-4">
+                <div className="flex items-center gap-2 text-slate-800 font-black mb-2">
+                    <Table size={18} className="text-orange-500" />
+                    <h3 className="tracking-wide text-slate-800">Table & Grid Lines</h3>
+                </div>
+
+                <div className="bg-white/50 border border-white/60 p-4 rounded-2xl space-y-4 shadow-sm">
+                    <div className="flex flex-col gap-2">
+                        <div className="flex justify-between items-center pl-1">
+                            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Border Thickness</label>
+                            <span className="text-xs font-black text-orange-600 bg-orange-100 px-2 py-0.5 rounded-md">{(localSettings as any).tableBorderThickness || 2}px</span>
+                        </div>
+                        <input 
+                            type="range" min="1" max="8" 
+                            value={(localSettings as any).tableBorderThickness || 2} 
+                            onChange={(e) => setLocalSettings(prev => ({...prev, tableBorderThickness: parseInt(e.target.value)}))}
+                            className="w-full accent-orange-500 cursor-pointer"
+                        />
+                    </div>
+
+                    <div className="flex flex-col gap-2 pt-2 border-t border-slate-200/50">
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">Grid Color / Visibility</p>
+                        <select 
+                            value={(localSettings as any).tableBorderColor || '#334155'}
+                            onChange={(e) => setLocalSettings(prev => ({...prev, tableBorderColor: e.target.value}))}
+                            className="w-full bg-white border border-slate-200 rounded-xl p-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-orange-500/30 focus:border-orange-500 transition-all text-slate-700"
+                        >
+                            <option value="#000000">Deep Black (Ultra High Contrast)</option>
+                            <option value="#334155">Dark Blue-Slate (Standard high contrast)</option>
+                            <option value="#475569">Slate Gray (Medium contrast)</option>
+                            <option value="#94a3b8">Soft Gray (Lighter)</option>
+                            <option value="#cbd5e1">Delicate Ghost Gray (Very Light)</option>
+                        </select>
                     </div>
                 </div>
             </div>

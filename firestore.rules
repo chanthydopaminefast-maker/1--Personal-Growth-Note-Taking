@@ -69,5 +69,23 @@ service cloud.firestore {
         allow read, write: if isOwner(userId);
       }
     }
+
+    // Helper validation for SharedNote
+    function isValidSharedNote(data) {
+      return data is map &&
+             data.get('id', '') is string && data.get('id', '').size() <= 128 &&
+             data.get('ownerId', '') is string && data.get('ownerId', '').size() <= 128 &&
+             data.get('ownerName', '') is string && data.get('ownerName', '').size() <= 128 &&
+             data.get('type', '') is string && data.get('type', '').size() <= 50 &&
+             data.get('title', '') is string && data.get('title', '').size() <= 256 &&
+             data.get('payload', {}) is map;
+    }
+
+    match /sharedNotes/{shareId} {
+      allow read: if true; // public read for imported shared links
+      allow create: if isValidSharedNote(incoming()) && incoming().id == shareId;
+      allow update: if isSignedIn() && isValidSharedNote(incoming()) && incoming().ownerId == existing().ownerId && incoming().id == shareId && resource.data.ownerId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+    }
   }
 }

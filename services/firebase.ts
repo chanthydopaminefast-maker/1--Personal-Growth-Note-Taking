@@ -1,5 +1,17 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, doc, onSnapshot, setDoc, deleteDoc, getDocFromServer, collection, writeBatch } from 'firebase/firestore';
+import { 
+  initializeFirestore, 
+  persistentLocalCache, 
+  persistentMultipleTabManager, 
+  doc, 
+  onSnapshot, 
+  setDoc, 
+  deleteDoc, 
+  getDocFromServer, 
+  collection, 
+  writeBatch,
+  getDoc
+} from 'firebase/firestore';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth'; 
 import { AppData, BackupEntry, Student } from '../types';
 import firebaseConfig from '../firebase-applet-config.json';
@@ -7,7 +19,14 @@ import { storage } from './storage';
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId); // CRITICAL: Database ID
+
+// Initialize Firestore with robust multi-tab persistent cache for full offline support
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager()
+  })
+}, firebaseConfig.firestoreDatabaseId);
+
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
@@ -656,3 +675,34 @@ export const getCloudBackups = async (): Promise<Partial<BackupEntry>[]> => {
 };
 
 export const getSyncStatus = () => !isOffline;
+
+// Global Shared note helper functions
+export const createSharedNote = async (
+  userId: string,
+  ownerName: string,
+  type: 'self-learning' | 'journal' | 'daily-note',
+  title: string,
+  payload: any
+): Promise<string> => {
+  const shareId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  const shareRef = doc(db, 'sharedNotes', shareId);
+  await setDoc(shareRef, {
+    id: shareId,
+    ownerId: userId,
+    ownerName: ownerName,
+    type: type,
+    title: title,
+    payload: payload,
+    createdAt: new Date().toISOString()
+  });
+  return shareId;
+};
+
+export const getSharedNote = async (shareId: string): Promise<any> => {
+  const shareRef = doc(db, 'sharedNotes', shareId);
+  const docSnap = await getDoc(shareRef);
+  if (docSnap.exists()) {
+    return docSnap.data();
+  }
+  return null;
+};

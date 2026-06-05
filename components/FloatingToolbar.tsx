@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Palette, Bold, Italic, Underline as UnderlineIcon, Strikethrough, CheckSquare, Type } from 'lucide-react';
+import { Palette, Bold, Italic, Underline as UnderlineIcon, Strikethrough, CheckSquare, Type, Highlighter } from 'lucide-react';
 
 export const fontFamilies = [
     { name: 'Modern', value: 'Inter' },
@@ -26,6 +26,19 @@ export const textColors = [
     { name: 'Pink', value: '#ec4899' },
     { name: 'Rose', value: '#f43f5e' },
     { name: 'Clear', value: 'transparent' }
+];
+
+export const highlightColors = [
+    { name: 'Light Yellow', value: '#fff9c4' },
+    { name: 'Light Green', value: '#c8e6c9' },
+    { name: 'Light Blue', value: '#bbdefb' },
+    { name: 'Light Pink', value: '#f8bbd0' },
+    { name: 'Light Purple', value: '#e1bee7' },
+    { name: 'Light Orange', value: '#ffe0b2' },
+    { name: 'Light Teal', value: '#b2dfdb' },
+    { name: 'Light Cyan', value: '#b2ebf2' },
+    { name: 'Light Indigo', value: '#c5cae9' },
+    { name: 'Clear Highlight', value: 'transparent' }
 ];
 
 export const FloatingToolbar = () => {
@@ -91,6 +104,25 @@ export const FloatingToolbar = () => {
             document.execCommand('removeFormat', false, undefined);
         } else {
             document.execCommand('foreColor', false, color);
+        }
+
+        selection.removeAllRanges();
+        savedRange.current = null;
+        setPickerPos(null);
+    };
+
+    const applyHighlightColor = (color: string) => {
+        const selection = window.getSelection();
+        if (!selection || !savedRange.current) return;
+        
+        selection.removeAllRanges();
+        selection.addRange(savedRange.current);
+
+        if (color === 'transparent') {
+            document.execCommand('backColor', false, '#ffffff');
+            document.execCommand('removeFormat', false, undefined);
+        } else {
+            document.execCommand('backColor', false, color);
         }
 
         selection.removeAllRanges();
@@ -194,19 +226,36 @@ export const FloatingToolbar = () => {
 
             <div className="w-full h-px bg-slate-100" />
 
-            <div className="flex flex-col gap-3 px-1 pb-1">
+            <div className="flex flex-col gap-2 px-1 pb-1">
                 <div className="flex gap-3 items-center">
-                    <Palette size={14} className="text-slate-300" />
-                    <div className="flex gap-1.5 ml-4">
+                    <span title="Font Color" className="flex items-center"><Palette size={14} className="text-slate-400 shrink-0" /></span>
+                    <div className="flex gap-1.5 ml-4 flex-wrap">
                     {textColors.slice(0, 10).map(color => (
                         <button 
                             key={color.value}
-                            className={`w-6 h-6 rounded-full border-2 border-white shadow-sm hover:scale-125 transition-transform ${color.value === 'transparent' ? 'bg-slate-50 flex items-center justify-center' : ''}`}
-                            style={{ backgroundColor: color.value === 'transparent' ? '' : color.value }}
+                            className={`w-6 h-6 rounded-full border border-slate-200 shadow-sm hover:scale-125 transition-transform cursor-pointer ${color.value === 'transparent' ? 'bg-slate-50 flex items-center justify-center' : ''}`}
+                            style={{ backgroundColor: color.value === 'transparent' ? '#ffffff' : color.value }}
                             onClick={() => applyTextColor(color.value)}
                             title={color.name}
                         >
-                            {color.value === 'transparent' && <span className="text-[10px] font-black opacity-30">✕</span>}
+                            {color.value === 'transparent' && <span className="text-[10px] font-black opacity-35 text-slate-400">✕</span>}
+                        </button>
+                    ))}
+                    </div>
+                </div>
+
+                <div className="flex gap-3 items-center">
+                    <span title="Highlight Color" className="flex items-center"><Highlighter size={14} className="text-slate-400 shrink-0" /></span>
+                    <div className="flex gap-1.5 ml-4 flex-wrap">
+                    {highlightColors.slice(0, 10).map(color => (
+                        <button 
+                            key={color.value}
+                            className={`w-6 h-6 rounded-full border border-slate-200 shadow-sm hover:scale-125 transition-transform cursor-pointer ${color.value === 'transparent' ? 'bg-slate-50 flex items-center justify-center' : ''}`}
+                            style={{ backgroundColor: color.value === 'transparent' ? '#ffffff' : color.value }}
+                            onClick={() => applyHighlightColor(color.value)}
+                            title={color.name}
+                        >
+                            {color.value === 'transparent' && <span className="text-[10px] font-black opacity-35 text-slate-400">✕</span>}
                         </button>
                     ))}
                     </div>

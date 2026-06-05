@@ -331,7 +331,7 @@ const StudentRegistrationForm: React.FC<{ onSubmit: (data: Partial<Student>) => 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!form.name || !form.photo) return alert("Please provide your name and a photo.");
-        onSubmit({ ...form, startDate: new Date().toLocaleDateString() });
+        onSubmit({ ...form, startDate: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) });
     };
 
     return (

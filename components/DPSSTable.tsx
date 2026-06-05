@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Plus, Trash2, Calendar, AlignLeft, AlignCenter, AlignRight, Highlighter, Type, Settings2, MousePointer2, Minus, Layout, Square, Quote, FileUp, FileDown, Loader2, Wand2, Menu, ChevronLeft, FileText, ChevronDown, ChevronRight, Table, Grid3X3, Columns, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Palette, Italic, Underline, Strikethrough, Indent, Outdent, List, ListOrdered, CheckSquare, MoreHorizontal, Download, Maximize2, Minimize2 } from 'lucide-react';
+import { Plus, Trash2, Calendar, AlignLeft, AlignCenter, AlignRight, Highlighter, Type, Settings2, MousePointer2, Minus, Layout, Square, Quote, FileUp, FileDown, Loader2, Wand2, Menu, ChevronLeft, FileText, ChevronDown, ChevronRight, Table, Grid3X3, Columns, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Palette, Italic, Underline, Strikethrough, Indent, Outdent, List, ListOrdered, CheckSquare, MoreHorizontal, Download, Maximize2, Minimize2, Search, Archive, Folder, Star } from 'lucide-react';
 import { AppData, DPSSTopic } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { callNeuralEngine } from '../services/neuralEngine';
@@ -25,9 +25,21 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
   const [showMoreTools, setShowMoreTools] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [showTableToolsMenu, setShowTableToolsMenu] = useState(false);
   const [isToolbarHidden, setIsToolbarHidden] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(window.innerWidth < 768 ? 200 : 300);
+  
+  const [searchTerm, setSearchTerm] = useState('');
+  const [expandedTopics, setExpandedTopics] = useState<Record<string, boolean>>({});
+  const [isArchiveFolderOpen, setIsArchiveFolderOpen] = useState(false);
+  const [activeTableCell, setActiveTableCell] = useState<HTMLTableCellElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const isResizing = useRef(false);
+  const isResizingTableCol = useRef(false);
+  const targetCellRef = useRef<HTMLTableCellElement | null>(null);
+  const initialXRef = useRef(0);
+  const initialWidthRef = useRef(0);
+  const initialNextWidthRef = useRef(0);
   const editorRef = useRef<HTMLDivElement>(null);
   const savedRange = useRef<Range | null>(null);
 
@@ -59,7 +71,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     exportContainer.innerHTML = `
       <div style="margin-bottom: 30px; border-bottom: 3px solid ${accentColor}; padding-bottom: 20px;">
         <h1 style="font-size: 26pt; font-weight: 900; color: ${isDark ? '#38bdf8' : '#0f172a'}; margin: 0; line-height: 1.2;">${activeTopic.title}</h1>
-        <p style="font-size: 10pt; color: ${isDark ? '#94a3b8' : '#64748b'}; margin-top: 8px; text-transform: uppercase; letter-spacing: 2px;">Strategic Notes Export • ${new Date().toLocaleDateString()}</p>
+        <p style="font-size: 10pt; color: ${isDark ? '#94a3b8' : '#64748b'}; margin-top: 8px; text-transform: uppercase; letter-spacing: 2px;">Strategic Notes Export • ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
       </div>
       <div class="note-content" style="line-height: 1.6; font-size: 11.5pt;">
         ${editorRef.current.innerHTML}
@@ -266,18 +278,38 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing.current) return;
-      const newWidth = Math.max(150, Math.min(e.clientX - 10, 500));
+      const newWidth = Math.max(160, Math.min(e.clientX - 10, 600));
       setSidebarWidth(newWidth);
     };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!isResizing.current) return;
+      if (e.touches && e.touches.length > 0) {
+        const clientX = e.touches[0].clientX;
+        const maxMobileWidth = Math.min(600, window.innerWidth - 45);
+        const newWidth = Math.max(160, Math.min(clientX - 10, maxMobileWidth));
+        setSidebarWidth(newWidth);
+      }
+    };
+
     const handleMouseUp = () => {
       isResizing.current = false;
       document.body.style.cursor = 'default';
     };
+
+    const handleTouchEnd = () => {
+      isResizing.current = false;
+    };
+
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('touchmove', handleTouchMove, { passive: true });
+    window.addEventListener('touchend', handleTouchEnd);
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleTouchEnd);
     };
   }, []);
   
@@ -329,26 +361,125 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
   const dpssSettings = data.settings || { fontSize: 12, fontFamily: "'Inter', sans-serif" };
   const textFontFamily = dpssSettings.textFontFamily || dpssSettings.fontFamily;
   const textFontSize = dpssSettings.textFontSize || dpssSettings.fontSize;
+  const tableBorderThickness = dpssSettings.tableBorderThickness !== undefined ? dpssSettings.tableBorderThickness : 2;
+  const tableBorderColor = dpssSettings.tableBorderColor || '#334155';
   const paperStyle = dpssSettings.paperStyle || 'none';
   const selectedPaper = PAPER_STYLES.find(s => s.id === paperStyle) || PAPER_STYLES[0];
 
   const filterTopics = (items: DPSSTopic[]): DPSSTopic[] => {
+    if (!Array.isArray(items)) return [];
     return items
-      .filter(t => !t.deletedAt)
+      .filter(t => t && !t.deletedAt)
       .map(t => ({
         ...t,
+        title: typeof t.title === 'string' ? t.title : 'New Topic',
         content: typeof t.content === 'string' ? t.content : '',
         alignment: t.alignment || 'left',
         children: t.children ? filterTopics(t.children) : []
       }));
   };
 
+  const filterActiveTopics = (items: DPSSTopic[]): DPSSTopic[] => {
+    if (!Array.isArray(items)) return [];
+    return items
+      .filter(t => t && !t.deletedAt && !t.isArchived)
+      .map(t => ({
+        ...t,
+        title: typeof t.title === 'string' ? t.title : 'New Topic',
+        content: typeof t.content === 'string' ? t.content : '',
+        alignment: t.alignment || 'left',
+        children: t.children ? filterActiveTopics(t.children) : []
+      }));
+  };
+
+  const getArchivedRootTopics = (items: DPSSTopic[]): DPSSTopic[] => {
+    if (!Array.isArray(items)) return [];
+    const archived: DPSSTopic[] = [];
+    const traverse = (list: DPSSTopic[]) => {
+      list.forEach(t => {
+        if (t && !t.deletedAt && t.isArchived) {
+          archived.push({
+            ...t,
+            children: t.children ? filterActiveTopics(t.children) : []
+          });
+        } else if (t && t.children) {
+          traverse(t.children);
+        }
+      });
+    };
+    traverse(items);
+    return archived;
+  };
+
   const topics = React.useMemo(() => {
     return filterTopics(data.dpssTopics || []);
   }, [data.dpssTopics]);
 
+  const activeTopics = React.useMemo(() => {
+    return filterActiveTopics(data.dpssTopics || []);
+  }, [data.dpssTopics]);
+
+  const archivedTopics = React.useMemo(() => {
+    return getArchivedRootTopics(data.dpssTopics || []);
+  }, [data.dpssTopics]);
+
+  const filterTopicsBySearch = (items: DPSSTopic[], searchStr: string): DPSSTopic[] => {
+    if (!searchStr) return items;
+    const cleanSearch = searchStr.toLowerCase().trim();
+    
+    return items.map(item => {
+      const isMatched = item.title.toLowerCase().includes(cleanSearch);
+      const filteredChildren = item.children ? filterTopicsBySearch(item.children, searchStr) : [];
+      
+      if (isMatched || filteredChildren.length > 0) {
+        return {
+          ...item,
+          children: filteredChildren
+        };
+      }
+      return null;
+    }).filter((item): item is NonNullable<typeof item> => item !== null);
+  };
+
+  const filteredTopics = React.useMemo(() => {
+    return filterTopicsBySearch(activeTopics, searchTerm);
+  }, [activeTopics, searchTerm]);
+
+  const filteredArchivedTopics = React.useMemo(() => {
+    return filterTopicsBySearch(archivedTopics, searchTerm);
+  }, [archivedTopics, searchTerm]);
+
+  // Auto-expand matched topics when searching
+  useEffect(() => {
+    if (searchTerm) {
+      const autoExpand = (items: DPSSTopic[]) => {
+        const expanded: Record<string, boolean> = {};
+        const traverse = (itemList: DPSSTopic[]) => {
+          itemList.forEach(item => {
+            if (item.children && item.children.length > 0) {
+              const matchInDescendants = (i: DPSSTopic): boolean => {
+                if (i.title.toLowerCase().includes(searchTerm.toLowerCase())) return true;
+                return i.children ? i.children.some(matchInDescendants) : false;
+              };
+              if (item.children.some(matchInDescendants)) {
+                expanded[item.id] = true;
+              }
+            }
+            if (item.children) traverse(item.children);
+          });
+        };
+        traverse(activeTopics);
+        setExpandedTopics(prev => ({ ...prev, ...expanded }));
+      };
+      autoExpand(activeTopics);
+    }
+  }, [searchTerm, activeTopics]);
+
   const handleSelection = () => {
     const selection = window.getSelection();
+    // Check if selecting inside a table cell
+    setTimeout(checkActiveTableCell, 10);
+
     if (selection && selection.rangeCount > 0) {
       const range = selection.getRangeAt(0);
       
@@ -386,6 +517,211 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     }
   };
 
+  const getCellResizeTarget = (clientX: number, cell: HTMLTableCellElement, threshold: number = 8) => {
+    const rect = cell.getBoundingClientRect();
+    if (Math.abs(clientX - rect.right) <= threshold) {
+      return cell;
+    }
+    if (Math.abs(clientX - rect.left) <= threshold) {
+      return cell.previousElementSibling as HTMLTableCellElement | null;
+    }
+    return null;
+  };
+
+  const hexToRgba = (hex: string, opacity: number) => {
+    let c = hex.replace('#', '');
+    if (c.length === 3) {
+      c = c.split('').map(x => x + x).join('');
+    }
+    if (c.length === 6) {
+      const r = parseInt(c.substring(0, 2), 16);
+      const g = parseInt(c.substring(2, 4), 16);
+      const b = parseInt(c.substring(4, 6), 16);
+      return `rgba(${r}, ${g}, ${b}, ${opacity / 100})`;
+    }
+    return hex;
+  };
+
+  const checkActiveTableCell = () => {
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      const container = range.commonAncestorContainer;
+      const parentEl = container.nodeType === Node.TEXT_NODE ? container.parentElement : container as HTMLElement;
+      const cell = parentEl?.closest('td, th') as HTMLTableCellElement | null;
+      if (cell && editorRef.current?.contains(cell)) {
+        setActiveTableCell(cell);
+        return;
+      }
+    }
+    setActiveTableCell(null);
+  };
+
+  const addRow = (position: 'above' | 'below') => {
+    if (!activeTableCell) return;
+    const cell = activeTableCell;
+    const row = cell.parentElement as HTMLTableRowElement;
+    const table = row?.closest('table');
+    if (!table) return;
+
+    ensureTableColgroup(table);
+    const colgroup = table.querySelector('colgroup');
+    const colsCount = colgroup ? colgroup.querySelectorAll('col').length : row.cells.length;
+
+    const rowIndex = Array.from(table.rows).indexOf(row);
+    const targetIdx = position === 'above' ? rowIndex : rowIndex + 1;
+    const newRow = table.insertRow(targetIdx);
+
+    for (let c = 0; c < colsCount; c++) {
+      const newCell = newRow.insertCell(-1);
+      const sourceCell = row.cells[c] || row.cells[row.cells.length - 1] || cell;
+      newCell.style.cssText = sourceCell.style.cssText;
+      (newCell as HTMLElement).style.width = ''; // Let colgroup handle width permanently
+
+      if (c === 0 && position === 'below') {
+        const previousRowsCount = Array.from(table.rows).filter(r => !r.closest('thead')).length;
+        newCell.innerHTML = previousRowsCount.toString();
+        (newCell as HTMLElement).style.fontWeight = '800';
+        (newCell as HTMLElement).style.textAlign = 'center';
+      } else {
+        newCell.innerHTML = '&nbsp;';
+      }
+    }
+
+    if (editorRef.current && selectedTopic) {
+      updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+    }
+  };
+
+  const addColumn = (position: 'left' | 'right') => {
+    if (!activeTableCell) return;
+    const cell = activeTableCell;
+    const row = cell.parentElement as HTMLTableRowElement;
+    const table = row?.closest('table');
+    if (!table) return;
+
+    ensureTableColgroup(table);
+    const colgroup = table.querySelector('colgroup');
+    if (!colgroup) return;
+
+    const cellsInRow = Array.from(row.cells);
+    const clickedCellIdx = cellsInRow.indexOf(cell);
+    let colIdx = 0;
+    for (let i = 0; i < clickedCellIdx; i++) {
+      colIdx += parseInt(cellsInRow[i].getAttribute('colspan') || '1', 10);
+    }
+    colIdx += parseInt(cell.getAttribute('colspan') || '1', 10) - 1;
+
+    // Add col in colgroup
+    const colToInsertBefore = colgroup.children[position === 'left' ? colIdx : colIdx + 1];
+    const newCol = document.createElement('col');
+    newCol.style.width = '100px';
+    if (colToInsertBefore) {
+      colgroup.insertBefore(newCol, colToInsertBefore);
+    } else {
+      colgroup.appendChild(newCol);
+    }
+
+    // Add cell in every row inside this table
+    Array.from(table.rows).forEach(r => {
+      // If it's the <thead> header row spanning all cols, adjust colspan
+      const headerCell = r.querySelector('th[colspan]');
+      if (headerCell) {
+        const currentColspan = parseInt(headerCell.getAttribute('colspan') || '1', 10);
+        headerCell.setAttribute('colspan', (currentColspan + 1).toString());
+        return;
+      }
+
+      // Find the cell index corresponding to colIdx
+      let cellIndexToInsert = 0;
+      let accumulatedCols = 0;
+      const rowCells = Array.from(r.cells);
+      for (let i = 0; i < rowCells.length; i++) {
+        const span = parseInt(rowCells[i].getAttribute('colspan') || '1', 10);
+        if (accumulatedCols + span > colIdx) {
+          cellIndexToInsert = position === 'left' ? i : i + 1;
+          break;
+        }
+        accumulatedCols += span;
+        cellIndexToInsert = i + 1;
+      }
+
+      const newCell = r.insertCell(cellIndexToInsert);
+      const sourceCell = rowCells[0] || cell;
+      newCell.style.cssText = sourceCell.style.cssText;
+      (newCell as HTMLElement).style.width = '';
+      newCell.innerHTML = '&nbsp;';
+    });
+
+    if (editorRef.current && selectedTopic) {
+      updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+    }
+  };
+
+  const deleteTableElement = (type: 'row' | 'col') => {
+    if (!activeTableCell) return;
+    const cell = activeTableCell;
+    const row = cell.parentElement as HTMLTableRowElement;
+    const table = row?.closest('table');
+    if (!table) return;
+
+    if (type === 'row') {
+      const rowIndex = Array.from(table.rows).indexOf(row);
+      // Don't delete header row
+      if (row.closest('thead')) return;
+      table.deleteRow(rowIndex);
+      setActiveTableCell(null);
+    } else {
+      ensureTableColgroup(table);
+      const colgroup = table.querySelector('colgroup');
+      if (!colgroup) return;
+
+      const cellsInRow = Array.from(row.cells);
+      const clickedCellIdx = cellsInRow.indexOf(cell);
+      let colIdx = 0;
+      for (let i = 0; i < clickedCellIdx; i++) {
+        colIdx += parseInt(cellsInRow[i].getAttribute('colspan') || '1', 10);
+      }
+      colIdx += parseInt(cell.getAttribute('colspan') || '1', 10) - 1;
+
+      // Delete <col> in colgroup
+      if (colgroup.children[colIdx]) {
+        colgroup.removeChild(colgroup.children[colIdx]);
+      }
+
+      // Delete cell from every row
+      Array.from(table.rows).forEach(r => {
+        const headerCell = r.querySelector('th[colspan]');
+        if (headerCell) {
+          const currentColspan = Math.max(1, parseInt(headerCell.getAttribute('colspan') || '1', 10) - 1);
+          headerCell.setAttribute('colspan', currentColspan.toString());
+          return;
+        }
+
+        let cellIndexToDelete = -1;
+        let accumulatedCols = 0;
+        const rowCells = Array.from(r.cells);
+        for (let i = 0; i < rowCells.length; i++) {
+          const span = parseInt(rowCells[i].getAttribute('colspan') || '1', 10);
+          if (accumulatedCols <= colIdx && colIdx < accumulatedCols + span) {
+            cellIndexToDelete = i;
+            break;
+          }
+          accumulatedCols += span;
+        }
+
+        if (cellIndexToDelete !== -1) {
+          r.deleteCell(cellIndexToDelete);
+        }
+      });
+      setActiveTableCell(null);
+    }
+
+    if (editorRef.current && selectedTopic) {
+      updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+    }
+  };
+
   const applyTextColor = (color: string, selectionProvided: boolean = false) => {
     const selection = window.getSelection();
     if (!selection) return;
@@ -403,8 +739,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     }
     
     // Cleanup
+    selection.removeAllRanges();
     if (!selectionProvided) {
-      selection.removeAllRanges();
       savedRange.current = null;
       setPickerPos(null);
     }
@@ -427,8 +763,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     }
     
     // Cleanup
+    selection.removeAllRanges();
     if (!selectionProvided) {
-      selection.removeAllRanges();
       savedRange.current = null;
       setPickerPos(null);
     }
@@ -572,12 +908,50 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
 
   const insertDate = () => {
     if (!selectedTopic) return;
-    const dateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-    const formattedDate = `<div style="color: #f59e0b; font-weight: 800; font-size: 1.2em; border-left: 4px solid #f59e0b; padding-left: 12px; margin: 10px 0;">${dateStr}</div>`;
-    const newContent = formattedDate + selectedTopic.content;
-    updateTopic(selectedTopic.id, { content: newContent });
-    if (editorRef.current) {
-        editorRef.current.innerHTML = newContent;
+    const dateStr = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    const formattedDate = `<span style="color: #f59e0b; font-weight: 800; font-family: sans-serif; display: inline-block;">${dateStr}</span>`;
+    
+    let inserted = false;
+    const sel = window.getSelection();
+    if (editorRef.current && sel) {
+      const activeRange = (sel.rangeCount > 0 ? sel.getRangeAt(0) : null) || savedRange.current;
+      if (activeRange && editorRef.current.contains(activeRange.commonAncestorContainer)) {
+        editorRef.current.focus();
+        sel.removeAllRanges();
+        sel.addRange(activeRange);
+        activeRange.deleteContents();
+        
+        const el = document.createElement("span");
+        el.innerHTML = formattedDate;
+        
+        const frag = document.createDocumentFragment();
+        let node;
+        let lastNode;
+        while ((node = el.firstChild)) {
+          lastNode = frag.appendChild(node);
+        }
+        activeRange.insertNode(frag);
+        
+        if (lastNode) {
+          const newRange = activeRange.cloneRange();
+          newRange.setStartAfter(lastNode);
+          newRange.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(newRange);
+          savedRange.current = newRange;
+        }
+        inserted = true;
+      }
+    }
+
+    if (!inserted && editorRef.current) {
+      const currentContent = editorRef.current.innerHTML || '';
+      const spacing = currentContent.trim().length > 0 ? ' &nbsp; ' : '';
+      const newContent = currentContent + spacing + formattedDate;
+      editorRef.current.innerHTML = newContent;
+      updateTopic(selectedTopic.id, { content: newContent });
+    } else if (editorRef.current) {
+      updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
     }
   };
 
@@ -598,14 +972,14 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     const c = configs[theme] || configs.blue;
 
     const cardHtml = `
-<div class="synthesis-card-wrapper" style="border: 1.5px solid ${c.border}; background-color: ${c.bg}; border-radius: 20px; padding: 20px; margin: 18px 0; font-family: sans-serif; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.04); text-align: left;">
-  <div style="font-weight: 955; color: ${c.title}; text-transform: uppercase; font-size: 13px; letter-spacing: 0.05em; margin-bottom: 6px;">
+<div class="synthesis-card-wrapper" style="border: 1.5px solid ${c.border} !important; background-color: ${c.bg} !important; background: ${c.bg} !important; border-radius: 20px; padding: 20px; margin: 18px 0; font-family: sans-serif; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.04); text-align: left;">
+  <div style="font-weight: 955; color: ${c.title} !important; text-transform: uppercase; font-size: 13px; letter-spacing: 0.05em; margin-bottom: 6px;">
     SYNTHESIS & ACTION PLAN
   </div>
-  <div style="font-size: 12px; color: ${c.desc}; font-weight: 700; margin-bottom: 12px; line-height: 1.5;">
+  <div style="font-size: 12px; color: ${c.desc} !important; font-weight: 750; margin-bottom: 12px; line-height: 1.5;">
     Based on the 7-day audit, define one "Friction Rule" (e.g., "No gaming before 8 PM" or "Delete mobile apps on weekdays") to regain control over your attention.
   </div>
-  <div style="background-color: #ffffff; border: 1.5px solid ${c.inner}; border-radius: 12px; padding: 14px; min-height: 70px; color: #0f172a; font-size: 13px;" class="synthesis-box">
+  <div style="background-color: #ffffff !important; background: #ffffff !important; border: 1.5px solid ${c.inner} !important; border-radius: 12px; padding: 14px; min-height: 70px; color: #0f172a !important; font-size: 13px;" class="synthesis-box">
     &nbsp;
   </div>
 </div>
@@ -648,20 +1022,20 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     const c = configs[theme] || configs.slate;
 
     const qaHtml = `
-<div class="qa-board-wrapper" style="border: 1.5px solid ${c.border}; background-color: ${c.bg}; border-radius: 20px; padding: 20px; margin: 18px 0; font-family: sans-serif; box-shadow: 0 4px 12px rgba(148, 163, 184, 0.03); text-align: left;">
-  <div style="font-weight: 955; color: ${c.title}; text-transform: uppercase; font-size: 13px; letter-spacing: 0.05em; margin-bottom: 6px;">
+<div class="qa-board-wrapper" style="border: 1.5px solid ${c.border} !important; background-color: ${c.bg} !important; background: ${c.bg} !important; border-radius: 20px; padding: 20px; margin: 18px 0; font-family: sans-serif; box-shadow: 0 4px 12px rgba(148, 163, 184, 0.03); text-align: left;">
+  <div style="font-weight: 955; color: ${c.title} !important; text-transform: uppercase; font-size: 13px; letter-spacing: 0.05em; margin-bottom: 6px;">
     CRITICAL QUESTION & ANSWER BOARD
   </div>
-  <div style="font-size: 11px; color: ${c.desc}; font-weight: 600; margin-bottom: 14px;">
+  <div style="font-size: 11px; color: ${c.desc} !important; font-weight: 600; margin-bottom: 14px;">
     Use this modular layout to establish friction, debug your behaviors, and verify progression criteria.
   </div>
   <div style="display: grid; grid-template-columns: 1fr; gap: 14px;">
-    <div style="background-color: #ffffff; border: 1px solid ${c.inner}; border-radius: 14px; padding: 14px;">
-      <div style="font-weight: 800; color: #0f172a; font-size: 11px; margin-bottom: 6px; text-transform: uppercase;">Question or Core Prompt</div>
-      <div style="font-size: 12px; color: #475569; font-style: italic; margin-bottom: 10px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 6px;">
+    <div style="background-color: #ffffff !important; background: #ffffff !important; border: 1px solid ${c.inner} !important; border-radius: 14px; padding: 14px;">
+      <div style="font-weight: 800; color: #0f172a !important; font-size: 11px; margin-bottom: 6px; text-transform: uppercase;">Question or Core Prompt</div>
+      <div style="font-size: 12px; color: #475569 !important; font-style: italic; margin-bottom: 10px; border-bottom: 1px dashed #e2e8f0 !important; padding-bottom: 6px;">
         Define your prompt here (e.g., "What was the single biggest trigger today?")
       </div>
-      <div style="min-height: 40px; font-size: 13px; color: #0f172a;" class="qa-box">
+      <div style="min-height: 40px; font-size: 13px; color: #0f172a !important;" class="qa-box">
         Write your response here...
       </div>
     </div>
@@ -725,8 +1099,9 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       };
       const c = configs[theme];
       if (c) {
-        element.style.borderColor = c.border;
-        element.style.backgroundColor = c.bg;
+        element.style.setProperty('border-color', c.border, 'important');
+        element.style.setProperty('background-color', c.bg, 'important');
+        element.style.setProperty('background', c.bg, 'important');
         
         const headerDiv = element.children[0] as HTMLElement;
         if (headerDiv) headerDiv.style.color = c.header;
@@ -754,8 +1129,9 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       };
       const c = configs[theme];
       if (c) {
-        element.style.borderColor = c.border;
-        element.style.backgroundColor = c.bg;
+        element.style.setProperty('border-color', c.border, 'important');
+        element.style.setProperty('background-color', c.bg, 'important');
+        element.style.setProperty('background', c.bg, 'important');
         
         const headerDiv = element.children[0] as HTMLElement;
         if (headerDiv) headerDiv.style.color = c.header;
@@ -777,15 +1153,39 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
   };
 
   const [isTableModalOpen, setIsTableModalOpen] = useState(false);
-  const [tableConfig, setTableConfig] = useState({ rows: 5, cols: 2, hasHeader: true, theme: '#f97316', headerTitle: 'New Table' });
+  const [tableConfig, setTableConfig] = useState({ rows: 5, cols: 2, hasHeader: true, theme: '#f97316', headerTitle: 'New Table', gridOpacity: 100, gridStyle: 'theme-solid' });
 
   const insertSmartTable = () => {
-    const { rows, cols, hasHeader, theme, headerTitle } = tableConfig;
-    let html = `<table style="width: 100%; border-collapse: collapse; margin: 20px 0; border: 2px solid ${theme}; font-size: 14px; border-radius: 12px; overflow: hidden; display: table;">`;
+    const { rows, cols, hasHeader, theme, headerTitle, gridOpacity } = tableConfig;
+    const styleType = (tableConfig.gridStyle || 'theme-solid') as 'theme-solid' | 'theme-open' | 'black-solid' | 'black-open';
+    const borderRgba = styleType.startsWith('theme') 
+      ? hexToRgba(theme, gridOpacity) 
+      : `rgba(51, 65, 85, ${gridOpacity / 100})`;
+
+    let tableBorderCss = `border: 2.5px solid ${borderRgba} !important;`;
+    if (styleType.endsWith('-open')) {
+      tableBorderCss = 'border: none !important;';
+    }
+
+    // Outer scrollable container to support phone bar horizontally
+    let html = `<p><br></p><div class="table-scroll-container" style="overflow-x: auto; max-width: 100%; -webkit-overflow-scrolling: touch; border-radius: 12px; margin: 8px 0 16px 0; border: ${styleType.endsWith('-open') ? 'none' : `1px solid ${borderRgba}`};">`;
+    html += `<table style="width: 100%; border-collapse: collapse; ${tableBorderCss} font-size: 14px; border-radius: 12px; overflow: hidden; display: table; table-layout: fixed;">`;
     
+    html += '<colgroup>';
+    for (let c = 0; c < cols; c++) {
+      const isFirstCol = c === 0;
+      const colWidth = isFirstCol ? '60px' : `${Math.floor((100 - 10) / (cols - 1 || 1))}%`;
+      html += `<col style="width: ${colWidth};">`;
+    }
+    html += '</colgroup>';
+
     if (hasHeader) {
+      let headerBorderCss = `border: 2px solid ${borderRgba} !important;`;
+      if (styleType.endsWith('-open')) {
+        headerBorderCss = `border: none !important; border-bottom: 2px solid ${borderRgba} !important;`;
+      }
       html += `<thead><tr style="background-color: ${theme}; color: white;">
-        <th colspan="${cols}" style="padding: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; border: 1px solid rgba(255,255,255,0.2);">${headerTitle}</th>
+        <th colspan="${cols}" style="padding: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; ${headerBorderCss}">${headerTitle}</th>
       </tr></thead>`;
     }
 
@@ -794,15 +1194,21 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       html += '<tr>';
       for (let c = 0; c < cols; c++) {
         const isFirstCol = c === 0;
-        const cellStyle = `padding: 10px; border: 1px solid ${theme}40; min-height: 24px; transition: background 0.2s;`;
+        let cellBorderCss = `border: 2px solid ${borderRgba} !important;`;
+        if (styleType.endsWith('-open')) {
+          cellBorderCss = `border: none !important; border-bottom: 2px solid ${borderRgba} !important;`;
+          if (c < cols - 1) {
+            cellBorderCss += ` border-right: 2px solid ${borderRgba} !important;`;
+          }
+        }
+        const cellStyle = `padding: 12px; ${cellBorderCss} min-height: 24px; transition: background 0.2s;`;
         const content = isFirstCol ? (r + 1).toString() : '';
         const textAlign = isFirstCol ? 'center' : 'left';
-        const width = isFirstCol ? '40px' : 'auto';
-        html += `<td style="${cellStyle} text-align: ${textAlign}; width: ${width}; font-weight: ${isFirstCol ? '800' : '500'};">${content}</td>`;
+        html += `<td style="${cellStyle} text-align: ${textAlign}; font-weight: ${isFirstCol ? '800' : '500'};">${content}</td>`;
       }
       html += '</tr>';
     }
-    html += '</tbody></table><p><br></p>';
+    html += '</tbody></table></div><p><br></p>';
 
     if (editorRef.current) {
       editorRef.current.focus();
@@ -957,6 +1363,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
   };
 
   const handleEditorClick = (e: React.MouseEvent) => {
+    setTimeout(checkActiveTableCell, 10);
     const target = e.target as HTMLElement;
     const anchor = target.closest('a');
     if (anchor) {
@@ -996,24 +1403,463 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     }
   };
 
-  const renderTopic = (topic: DPSSTopic, depth = 0) => (
-    <div key={topic.id} style={{ marginLeft: `${depth * 15}px` }}>
-      <div 
-        onClick={() => {
-          setSelectedTopicId(topic.id);
-          if (window.innerWidth < 768) setIsSidebarOpen(false);
-        }} 
-        className={`p-2 my-1 rounded-lg cursor-pointer flex items-center justify-between ${selectedTopicId === topic.id ? 'bg-orange-100/50' : 'bg-white/5 hover:bg-white/10'}`}
-      >
-        <span className="font-bold text-[13px] text-slate-700 truncate max-w-[180px]">{topic.title}</span>
-        <div className='flex gap-1 shrink-0'>
-            <button onClick={(e) => { e.stopPropagation(); addTopic(topic.id); }}><Plus size={14} className="text-slate-400 hover:text-green-500"/></button>
-            <button onClick={(e) => { e.stopPropagation(); deleteTopic(topic.id); }}><Trash2 size={14} className="text-slate-400 hover:text-red-500"/></button>
+  const focusAndSelectCell = (targetCell: HTMLTableCellElement) => {
+    targetCell.focus();
+    const selection = window.getSelection();
+    if (selection) {
+      const range = document.createRange();
+      range.selectNodeContents(targetCell);
+      range.collapse(false); // Place cursor at the end
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+  };
+
+  const ensureTableColgroup = (table: HTMLTableElement) => {
+    let colgroup = table.querySelector('colgroup');
+    if (!colgroup) {
+      let maxCols = 0;
+      Array.from(table.rows).forEach(row => {
+        let cellsCount = 0;
+        Array.from(row.cells).forEach(cell => {
+          cellsCount += parseInt(cell.getAttribute('colspan') || '1', 10);
+        });
+        if (cellsCount > maxCols) {
+          maxCols = cellsCount;
+        }
+      });
+
+      if (maxCols > 0) {
+        colgroup = document.createElement('colgroup');
+        const regularRow = Array.from(table.rows).find(row => {
+          let cCount = 0;
+          Array.from(row.cells).forEach(cell => { cCount += parseInt(cell.getAttribute('colspan') || '1', 10); });
+          return cCount === maxCols;
+        });
+
+        for (let i = 0; i < maxCols; i++) {
+          const col = document.createElement('col');
+          let colWidth = '150px';
+          if (regularRow && regularRow.cells[i]) {
+            colWidth = `${regularRow.cells[i].getBoundingClientRect().width}px`;
+          }
+          col.style.width = colWidth;
+          colgroup.appendChild(col);
+        }
+        table.insertBefore(colgroup, table.firstChild);
+      }
+    }
+
+    Array.from(table.querySelectorAll('td, th')).forEach(cell => {
+      const colSpan = parseInt(cell.getAttribute('colspan') || '1', 10);
+      if (colSpan === 1) {
+        (cell as HTMLElement).style.width = '';
+      }
+    });
+  };
+
+  const handleEditorKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    setTimeout(checkActiveTableCell, 20);
+    if (e.key === 'Tab') {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) return;
+      
+      const activeNode = selection.anchorNode;
+      if (!activeNode) return;
+      
+      const parentEl = (activeNode as any).parentElement || activeNode.parentNode as HTMLElement | null;
+      const activeEl = activeNode.nodeType === Node.ELEMENT_NODE ? (activeNode as HTMLElement) : parentEl;
+      const cell = activeEl?.closest?.('td, th') as HTMLTableCellElement | null;
+      if (cell) {
+        // Prevent browser's default behavior of inserting a tab character or shifting focus out of the editor.
+        e.preventDefault();
+        
+        const row = cell.parentElement as HTMLTableRowElement | null;
+        if (!row) return;
+        const table = row.closest('table') as HTMLTableElement | null;
+        if (!table) return;
+        
+        // Find all cells (td, th) in the table
+        const cells = Array.from(table.querySelectorAll('td, th')) as HTMLTableCellElement[];
+        const currentIndex = cells.indexOf(cell);
+        
+        if (e.shiftKey) {
+          // Navigate to previous cell
+          if (currentIndex > 0) {
+            const prevCell = cells[currentIndex - 1];
+            focusAndSelectCell(prevCell);
+          }
+        } else {
+          // Navigate to next cell or append new row if on final cell
+          if (currentIndex < cells.length - 1) {
+            const nextCell = cells[currentIndex + 1];
+            focusAndSelectCell(nextCell);
+          } else {
+            // Last cell of table! Ensure colgroup is initialized & active style is derived seamlessly
+            ensureTableColgroup(table);
+            const colgroup = table.querySelector('colgroup');
+            const colCount = colgroup ? colgroup.querySelectorAll('col').length : row.cells.length;
+            
+            const newRow = table.insertRow(-1); // Appends at current end
+            const newCells: HTMLTableCellElement[] = [];
+            
+            for (let c = 0; c < colCount; c++) {
+              const newCell = newRow.insertCell(-1);
+              const sourceCell = row.cells[c] || row.cells[row.cells.length - 1] || cell;
+              newCell.style.cssText = sourceCell.style.cssText;
+              newCell.style.width = ''; // Let colgroup handle width permanently!
+              
+              if (c === 0) {
+                const previousRowsCount = Array.from(table.rows).filter(r => !r.closest('thead')).length;
+                newCell.innerHTML = previousRowsCount.toString();
+                newCell.style.fontWeight = '800';
+                newCell.style.textAlign = 'center';
+              } else {
+                newCell.innerHTML = '<br>'; // Placeholder for cursor focus
+              }
+              newCells.push(newCell);
+            }
+            
+            if (newCells.length > 0) {
+              setTimeout(() => {
+                focusAndSelectCell(newCells[0]);
+              }, 10);
+            }
+            
+            if (editorRef.current && selectedTopic) {
+              updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+            }
+          }
+        }
+      }
+    }
+  };
+
+  const handleEditorMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isResizingTableCol.current) return;
+    
+    const target = e.target as HTMLElement;
+    const cell = target.closest('td, th') as HTMLTableCellElement | null;
+    if (cell) {
+      const resizeTarget = getCellResizeTarget(e.clientX, cell, 8);
+      if (resizeTarget) {
+        cell.style.cursor = 'col-resize';
+      } else {
+        cell.style.cursor = '';
+      }
+    }
+  };
+
+  const handleEditorMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    const clickedCell = target.closest('td, th') as HTMLTableCellElement | null;
+    if (!clickedCell) return;
+    
+    const cell = getCellResizeTarget(e.clientX, clickedCell, 8);
+    if (cell) {
+      e.preventDefault();
+      
+      const row = cell.parentElement as HTMLTableRowElement;
+      const table = row?.closest('table');
+      if (!table) return;
+
+      table.style.tableLayout = 'fixed';
+      ensureTableColgroup(table);
+
+      const colgroup = table.querySelector('colgroup');
+      if (!colgroup) return;
+      const cols = Array.from(colgroup.querySelectorAll('col'));
+
+      const cellsInRow = Array.from(row.cells);
+      const clickedCellIdx = cellsInRow.indexOf(cell);
+      let colIdx = 0;
+      for (let i = 0; i < clickedCellIdx; i++) {
+        colIdx += parseInt(cellsInRow[i].getAttribute('colspan') || '1', 10);
+      }
+      colIdx += parseInt(cell.getAttribute('colspan') || '1', 10) - 1;
+
+      const targetCol = cols[colIdx];
+      if (!targetCol) return;
+
+      isResizingTableCol.current = true;
+      targetCellRef.current = cell;
+      initialXRef.current = e.clientX;
+      initialWidthRef.current = targetCol.getBoundingClientRect().width;
+
+      const initialColWidths = cols.map(c => c.getBoundingClientRect().width);
+
+      const handleGlobalMouseMove = (moveEvent: MouseEvent) => {
+        if (isResizingTableCol.current && targetCol) {
+          const deltaX = moveEvent.clientX - initialXRef.current;
+          const newWidth = Math.max(30, initialWidthRef.current + deltaX);
+          
+          targetCol.style.width = `${newWidth}px`;
+
+          let totalTableWidth = 0;
+          cols.forEach((col, idx) => {
+            if (idx === colIdx) {
+              totalTableWidth += newWidth;
+            } else {
+              totalTableWidth += initialColWidths[idx] || col.getBoundingClientRect().width;
+            }
+          });
+          table.style.width = `${totalTableWidth}px`;
+        }
+      };
+
+      const handleGlobalMouseUp = () => {
+        isResizingTableCol.current = false;
+        targetCellRef.current = null;
+        
+        window.removeEventListener('mousemove', handleGlobalMouseMove);
+        window.removeEventListener('mouseup', handleGlobalMouseUp);
+        
+        if (editorRef.current && selectedTopic) {
+          updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+        }
+      };
+      
+      window.addEventListener('mousemove', handleGlobalMouseMove);
+      window.addEventListener('mouseup', handleGlobalMouseUp);
+    }
+  };
+
+  const handleEditorTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length === 0) return;
+    const touch = e.touches[0];
+    const target = touch.target as HTMLElement;
+    const clickedCell = target.closest('td, th') as HTMLTableCellElement | null;
+    if (clickedCell) {
+      const cell = getCellResizeTarget(touch.clientX, clickedCell, 22);
+      if (cell) {
+        e.preventDefault();
+        
+        const row = cell.parentElement as HTMLTableRowElement;
+        const table = row?.closest('table');
+        if (!table) return;
+
+        table.style.tableLayout = 'fixed';
+        ensureTableColgroup(table);
+
+        const colgroup = table.querySelector('colgroup');
+        if (!colgroup) return;
+        const cols = Array.from(colgroup.querySelectorAll('col'));
+
+        const cellsInRow = Array.from(row.cells);
+        const clickedCellIdx = cellsInRow.indexOf(cell);
+        let colIdx = 0;
+        for (let i = 0; i < clickedCellIdx; i++) {
+          colIdx += parseInt(cellsInRow[i].getAttribute('colspan') || '1', 10);
+        }
+        colIdx += parseInt(cell.getAttribute('colspan') || '1', 10) - 1;
+
+        const targetCol = cols[colIdx];
+        if (!targetCol) return;
+
+        isResizingTableCol.current = true;
+        targetCellRef.current = cell;
+        initialXRef.current = touch.clientX;
+        initialWidthRef.current = targetCol.getBoundingClientRect().width;
+
+        const initialColWidths = cols.map(c => c.getBoundingClientRect().width);
+
+        const handleGlobalTouchMove = (moveEvt: TouchEvent) => {
+          if (isResizingTableCol.current && targetCol && moveEvt.touches.length > 0) {
+            const t = moveEvt.touches[0];
+            const deltaX = t.clientX - initialXRef.current;
+            const newWidth = Math.max(30, initialWidthRef.current + deltaX);
+            
+            targetCol.style.width = `${newWidth}px`;
+
+            let totalTableWidth = 0;
+            cols.forEach((col, idx) => {
+              if (idx === colIdx) {
+                totalTableWidth += newWidth;
+              } else {
+                totalTableWidth += initialColWidths[idx] || col.getBoundingClientRect().width;
+              }
+            });
+            table.style.width = `${totalTableWidth}px`;
+          }
+        };
+
+        const handleGlobalTouchEnd = () => {
+          isResizingTableCol.current = false;
+          targetCellRef.current = null;
+          
+          window.removeEventListener('touchmove', handleGlobalTouchMove);
+          window.removeEventListener('touchend', handleGlobalTouchEnd);
+          
+          if (editorRef.current && selectedTopic) {
+            updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+          }
+        };
+
+        window.addEventListener('touchmove', handleGlobalTouchMove, { passive: false });
+        window.addEventListener('touchend', handleGlobalTouchEnd);
+      }
+    }
+  };
+
+  const getTopicStyles = (id: string, isSelected: boolean) => {
+    const hash = id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const colors = [
+      {
+        text: 'text-orange-850 dark:text-orange-400 font-bold',
+        bg: 'bg-orange-500/5',
+        border: 'border-orange-500/20',
+        activeBg: 'bg-orange-500/15 border-orange-500/40',
+        indicator: 'bg-orange-500',
+        iconColor: 'text-orange-500',
+        hover: 'hover:bg-orange-500/10'
+      },
+      {
+        text: 'text-indigo-800 dark:text-indigo-400 font-bold',
+        bg: 'bg-indigo-500/5',
+        border: 'border-indigo-500/20',
+        activeBg: 'bg-indigo-500/15 border-indigo-500/40',
+        indicator: 'bg-indigo-500',
+        iconColor: 'text-indigo-500',
+        hover: 'hover:bg-indigo-500/10'
+      },
+      {
+        text: 'text-emerald-800 dark:text-emerald-400 font-bold',
+        bg: 'bg-emerald-500/5',
+        border: 'border-emerald-500/20',
+        activeBg: 'bg-emerald-500/15 border-emerald-500/40',
+        indicator: 'bg-emerald-500',
+        iconColor: 'text-emerald-500',
+        hover: 'hover:bg-emerald-500/10'
+      },
+      {
+        text: 'text-amber-800 dark:text-amber-400 font-bold',
+        bg: 'bg-amber-500/5',
+        border: 'border-amber-500/20',
+        activeBg: 'bg-amber-500/15 border-amber-500/40',
+        indicator: 'bg-amber-500',
+        iconColor: 'text-amber-500',
+        hover: 'hover:bg-amber-500/10'
+      },
+      {
+        text: 'text-rose-800 dark:text-rose-400 font-bold',
+        bg: 'bg-rose-500/5',
+        border: 'border-rose-500/20',
+        activeBg: 'bg-rose-500/15 border-rose-500/40',
+        indicator: 'bg-rose-500',
+        iconColor: 'text-rose-500',
+        hover: 'hover:bg-rose-500/10'
+      },
+      {
+        text: 'text-sky-800 dark:text-sky-400 font-bold',
+        bg: 'bg-sky-500/5',
+        border: 'border-sky-500/20',
+        activeBg: 'bg-sky-500/15 border-sky-500/40',
+        indicator: 'bg-sky-500',
+        iconColor: 'text-sky-500',
+        hover: 'hover:bg-sky-500/10'
+      },
+      {
+        text: 'text-purple-800 dark:text-purple-400 font-bold',
+        bg: 'bg-purple-500/5',
+        border: 'border-purple-500/20',
+        activeBg: 'bg-purple-500/15 border-purple-50 border-purple-500/40',
+        indicator: 'bg-purple-500',
+        iconColor: 'text-purple-500',
+        hover: 'hover:bg-purple-500/10'
+      },
+      {
+        text: 'text-teal-800 dark:text-teal-400 font-bold',
+        bg: 'bg-teal-500/5',
+        border: 'border-teal-500/20',
+        activeBg: 'bg-teal-500/15 border-teal-500/40',
+        indicator: 'bg-teal-500',
+        iconColor: 'text-teal-500',
+        hover: 'hover:bg-teal-500/10'
+      }
+    ];
+    return colors[hash % colors.length];
+  };
+
+  const renderTopic = (topic: DPSSTopic, depth = 0): React.ReactNode => {
+    const isSelected = selectedTopicId === topic.id;
+    const style = getTopicStyles(topic.id, isSelected);
+    const hasChildren = topic.children && topic.children.length > 0;
+    const isExpanded = !!expandedTopics[topic.id];
+
+    return (
+      <div key={topic.id} className="relative select-none" style={{ marginLeft: `${depth * 8}px` }}>
+        <div 
+          onClick={() => {
+            setSelectedTopicId(topic.id);
+            if (hasChildren) {
+              setExpandedTopics(prev => ({ ...prev, [topic.id]: !prev[topic.id] }));
+            }
+            if (window.innerWidth < 768) {
+              setIsSidebarOpen(false);
+            }
+          }} 
+          className={`group flex items-center justify-between p-2 my-1 rounded-xl cursor-pointer border transition-all ${
+            isSelected 
+              ? `${style.activeBg} ${style.border} ${style.text} shadow-sm scale-[1.01]` 
+              : `bg-white/40 dark:bg-slate-900/10 ${style.border} ${style.text} hover:scale-[1.01] hover:bg-white/70`
+          }`}
+        >
+          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+            {hasChildren ? (
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setExpandedTopics(prev => ({ ...prev, [topic.id]: !prev[topic.id] }));
+                }}
+                className="p-0.5 rounded hover:bg-slate-200/50 dark:hover:bg-slate-800 shrink-0 text-slate-500"
+              >
+                {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              </button>
+            ) : (
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${style.indicator} ml-1.5`} />
+            )}
+            
+            <span className="font-bold text-[12px] truncate flex-1 min-w-0" title={topic.title}>{topic.title}</span>
+          </div>
+
+          <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button 
+                onClick={(e) => { e.stopPropagation(); addTopic(topic.id); }} 
+                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-500 hover:text-emerald-600 transition-all"
+                title="Add nesting sub-topic"
+              >
+                <Plus size={13} />
+              </button>
+              
+              <button 
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  updateTopic(topic.id, { isArchived: !topic.isArchived });
+                }} 
+                className={`p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-all ${topic.isArchived ? 'text-amber-500' : 'text-slate-400 hover:text-amber-500'}`}
+                title={topic.isArchived ? "Remove from Favorite Stars" : "Add to Favorite Stars"}
+              >
+                <Star size={13} fill={topic.isArchived ? "currentColor" : "none"} />
+              </button>
+
+              <button 
+                onClick={(e) => { e.stopPropagation(); deleteTopic(topic.id); }} 
+                className="p-1 hover:bg-red-50/50 dark:hover:bg-red-950/20 rounded text-slate-400 hover:text-red-500 transition-all"
+                title="Delete Topic"
+              >
+                <Trash2 size={13} />
+              </button>
+          </div>
         </div>
+        
+        {hasChildren && isExpanded && (
+          <div className="border-l border-dashed border-slate-200 dark:border-slate-800 ml-2.5 pl-1.5">
+            {topic.children!.map(child => renderTopic(child, depth + 1))}
+          </div>
+        )}
       </div>
-      {topic.children?.map(child => renderTopic(child, depth + 1))}
-    </div>
-  );
+    );
+  };
 
   useEffect(() => {
     if (editorRef.current && selectedTopic) {
@@ -1034,19 +1880,19 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
   }, [selectedTopic?.id, selectedTopic?.content]);
 
   return (
-    <div className="flex flex-col md:flex-row h-full md:h-[90vh] w-full p-2 gap-0 overflow-hidden relative">
+    <div className="flex flex-col md:flex-row h-full md:h-full w-full p-0 gap-0 overflow-hidden relative">
       {/* Sidebar with Fonts - Mobile Slide-in Logic */}
       <div 
         style={{ width: isSidebarOpen ? `${sidebarWidth}px` : '0px' }}
         className={`
           fixed md:relative inset-y-0 left-0 z-50 md:z-30
           bg-white/95 md:bg-white/10 backdrop-blur-3xl md:backdrop-blur-md 
-          rounded-r-3xl md:rounded-3xl overflow-hidden shrink-0 transition-all duration-300 transform
-          ${isSidebarOpen ? 'p-4 md:p-6 border-r md:border border-white/20 translate-x-0' : 'p-0 border-none -translate-x-full md:translate-x-0 pointer-events-none opacity-0 select-none hidden md:hidden'}
-          flex flex-col gap-4
+          rounded-r-3xl md:rounded-3xl shrink-0 transition-[transform,opacity] duration-300 transform
+          ${isSidebarOpen ? 'p-3 md:p-6 border-r md:border border-white/20 translate-x-0' : 'p-0 border-none -translate-x-full md:translate-x-0 pointer-events-none opacity-0 select-none hidden md:hidden'}
+          flex flex-col gap-3 md:gap-4 max-[767px]:landscape:gap-2 relative select-none
         `}
       >
-        <div className="flex items-center justify-between mb-4 shrink-0">
+        <div className="flex items-center justify-between mb-2 shrink-0">
           <h2 className="text-xl font-black text-slate-800 tracking-tight whitespace-nowrap">Note-taking</h2>
           <button 
             onClick={() => setIsSidebarOpen(false)} 
@@ -1056,37 +1902,105 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
           </button>
         </div>
 
-        <button 
-          onClick={() => {
-            addTopic();
-          }} 
-          className="w-full py-4 bg-orange-500 text-white rounded-2xl text-[10px] font-black flex items-center justify-center gap-2 hover:bg-orange-600 shadow-xl shadow-orange-500/20 active:scale-95 transition-all shrink-0 whitespace-nowrap"
-        >
-          <Plus size={18} /> Add New Topic
-        </button>
+        {/* Unifed Scrollable Column containing action buttons, search, topics, and folder archive */}
+        <div className="flex-1 overflow-y-auto pr-1 -mr-1 space-y-3 max-[767px]:landscape:space-y-2.5 custom-scrollbar flex flex-col">
+          <div className="flex flex-col max-[767px]:landscape:flex-row gap-2 shrink-0">
+            <button 
+              onClick={() => {
+                addTopic();
+              }} 
+              className="flex-1 py-3 bg-orange-500 text-white rounded-2xl text-[10px] font-black flex items-center justify-center gap-1.5 hover:bg-orange-600 shadow-xl shadow-orange-500/20 active:scale-95 transition-all whitespace-nowrap"
+            >
+              <Plus size={16} /> Add New Topic
+            </button>
 
-        <div className="flex-1 overflow-y-auto pr-2 space-y-1 custom-scrollbar">
-            {topics.map(t => renderTopic(t))}
+            {/* Search Bar */}
+            <div className="relative flex-1">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search notes..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-8 py-2.5 bg-slate-100 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-medium text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 transition-all"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 font-bold text-xs"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Active Topics */}
+          <div className="space-y-1">
+            {filteredTopics.length > 0 ? (
+              filteredTopics.map(t => renderTopic(t))
+            ) : (
+              <div className="text-center py-6 text-xs text-slate-400 select-none">
+                {searchTerm ? 'No matching note topics found' : 'No active note topics yet'}
+              </div>
+            )}
+          </div>
+
+          {/* Favorite Stars */}
+          <div className="pt-4 border-t border-slate-200/65 dark:border-slate-800/60">
+            <button
+              onClick={() => setIsArchiveFolderOpen(prev => !prev)}
+              className="w-full flex items-center justify-between p-2 rounded-xl bg-amber-50/50 dark:bg-slate-900/20 text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/20 border border-amber-100/40 transition-all select-none cursor-pointer"
+            >
+              <div className="flex items-center gap-2">
+                <Star size={15} className="text-amber-500" fill="currentColor" />
+                <span className="text-[11px] font-black uppercase tracking-wider">Favorite Stars</span>
+                <span className="bg-amber-100 dark:bg-amber-900/40 text-amber-700 px-1.5 py-0.5 rounded-full text-[9px] font-bold">
+                  {archivedTopics.length}
+                </span>
+              </div>
+              {isArchiveFolderOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            </button>
+
+            {isArchiveFolderOpen && (
+              <div className="mt-2 space-y-1.5 pl-1 animate-in fade-in slide-in-from-top-1 duration-200">
+                {filteredArchivedTopics.length > 0 ? (
+                  filteredArchivedTopics.map(t => renderTopic(t))
+                ) : (
+                  <div className="text-center py-4 text-[10px] text-slate-400 select-none">
+                    {searchTerm ? 'No matching favorite topics' : 'Favorite Stars is empty'}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* Resizable drag handle (Touch + Mouse friendly) */}
+        {isSidebarOpen && (
+          <div
+            className="absolute top-0 bottom-0 right-0 w-3 cursor-col-resize z-50 flex items-center justify-center group/resize-handle select-none touch-none touch-pan-y"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              isResizing.current = true;
+              document.body.style.cursor = 'col-resize';
+            }}
+            onTouchStart={() => {
+              isResizing.current = true;
+            }}
+          >
+            {/* Visual handle indicator bar */}
+            <div className="h-10 w-1 rounded-full bg-slate-350 dark:bg-slate-700 opacity-40 group-hover/resize-handle:opacity-100 group-active/resize-handle:opacity-100 group-hover/resize-handle:bg-orange-500 group-active/resize-handle:bg-orange-500 transition-all shadow-sm" />
+          </div>
+        )}
       </div>
 
-      {/* Resize Handle */}
-      {isSidebarOpen && (
-        <div 
-          className="hidden md:block w-1 hover:w-2 bg-transparent hover:bg-orange-500/20 cursor-col-resize z-40 transition-all shrink-0"
-          onMouseDown={() => {
-            isResizing.current = true;
-            document.body.style.cursor = 'col-resize';
-          }}
-        />
-      )}
-      
       {/* Editor Area */}
       <div className={`flex-1 bg-transparent rounded-3xl p-4 md:p-6 border border-white/20 relative overflow-hidden flex flex-col ${!isSidebarOpen ? 'w-full' : 'hidden md:flex'}`}>
         {!isSidebarOpen && (
           <button 
             onClick={() => setIsSidebarOpen(true)}
-            className="absolute left-4 top-4 z-[100] p-3 bg-orange-500 text-white rounded-xl shadow-lg hover:bg-orange-600 transition-all active:scale-95 flex items-center justify-center"
+            className="absolute left-20 top-4 z-[100] p-3 bg-orange-500 text-white rounded-xl shadow-lg hover:bg-orange-600 transition-all active:scale-95 flex items-center justify-center"
           >
             <Menu size={24} />
           </button>
@@ -1116,7 +2030,28 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                       <select 
                         onChange={(e) => {
                           const font = e.target.value;
-                          document.execCommand('fontName', false, font);
+                          const selection = window.getSelection();
+                          if (selection && selection.rangeCount > 0 && !selection.isCollapsed) {
+                            const range = selection.getRangeAt(0);
+                            const span = document.createElement('span');
+                            span.style.fontFamily = font;
+                            try {
+                              span.appendChild(range.extractContents());
+                              range.insertNode(span);
+                              selection.removeAllRanges();
+                              const newRange = document.createRange();
+                              newRange.selectNodeContents(span);
+                              selection.addRange(newRange);
+                            } catch {
+                              document.execCommand('styleWithCSS', false, 'true');
+                              document.execCommand('fontName', false, font);
+                            }
+                            if (editorRef.current && selectedTopic) {
+                              updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+                            }
+                            const el = document.activeElement as HTMLElement;
+                            el?.dispatchEvent(new Event('input', { bubbles: true }));
+                          }
                         }}
                         className="bg-white px-2 py-1 rounded text-[10px] font-bold border-none outline-none cursor-pointer hover:bg-slate-50 transition-colors"
                         title="Font Family"
@@ -1131,13 +2066,27 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                       <select 
                         onChange={(e) => {
                           const size = e.target.value;
-                          // execCommand fontSize is limited to 1-7, so we'll apply style directly to selection
                           const selection = window.getSelection();
-                          if (selection?.rangeCount) {
+                          if (selection && selection.rangeCount > 0 && !selection.isCollapsed) {
                             const range = selection.getRangeAt(0);
                             const span = document.createElement('span');
                             span.style.fontSize = `${size}px`;
-                            range.surroundContents(span);
+                            try {
+                              span.appendChild(range.extractContents());
+                              range.insertNode(span);
+                              selection.removeAllRanges();
+                              const newRange = document.createRange();
+                              newRange.selectNodeContents(span);
+                              selection.addRange(newRange);
+                            } catch {
+                              document.execCommand('styleWithCSS', false, 'true');
+                              document.execCommand('fontSize', false, '3');
+                            }
+                            if (editorRef.current && selectedTopic) {
+                              updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+                            }
+                            const el = document.activeElement as HTMLElement;
+                            el?.dispatchEvent(new Event('input', { bubbles: true }));
                           }
                         }}
                         className="bg-white px-2 py-1 rounded text-[10px] font-bold border-none outline-none cursor-pointer hover:bg-slate-50 transition-colors w-14"
@@ -1147,15 +2096,6 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                           <option key={s} value={s}>{s}px</option>
                         ))}
                       </select>
-                    </div>
-
-                    <div className="h-6 w-px bg-white/30 mx-1" />
-
-                    <div className="flex gap-1 bg-white/40 p-1 rounded-lg shrink-0">
-                      <button className="p-1.5 hover:bg-white rounded transition-colors" title="Bold" onClick={() => document.execCommand('bold')}><Plus size={14} className="rotate-45" /> <span className="text-[10px] font-black">B</span></button>
-                      <button className="p-1.5 hover:bg-white rounded transition-colors" title="Italic" onClick={() => document.execCommand('italic')}><Italic size={14} /></button>
-                      <button className="p-1.5 hover:bg-white rounded transition-colors" title="Underline" onClick={() => document.execCommand('underline')}><Underline size={14} /></button>
-                      <button className="p-1.5 hover:bg-white rounded transition-colors" title="Strikethrough" onClick={() => document.execCommand('strikeThrough')}><Strikethrough size={14} /></button>
                     </div>
 
                     <div className="h-6 w-px bg-white/30 mx-1" />
@@ -1289,70 +2229,86 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
 
                         <div className="h-6 w-px bg-white/30 mx-1" />
 
-                        <div className="flex gap-1 bg-white/40 p-1 rounded-lg shrink-0">
-                           <button onClick={() => manageTable('row-above')} className="p-1.5 hover:bg-white rounded text-slate-600" title="Insert Row Above"><ArrowUp size={14} /></button>
-                           <button onClick={() => manageTable('row-below')} className="p-1.5 hover:bg-white rounded text-slate-600" title="Insert Row Below"><ArrowDown size={14} /></button>
-                           <button onClick={() => manageTable('col-left')} className="p-1.5 hover:bg-white rounded text-slate-600" title="Insert Col Left"><ArrowLeft size={14} /></button>
-                           <button onClick={() => manageTable('col-right')} className="p-1.5 hover:bg-white rounded text-slate-600" title="Insert Col Right"><ArrowRight size={14} /></button>
-                           <div className="w-px h-4 bg-black/10 mx-1 self-center" />
-                           <button onClick={() => manageTable('delete-row')} className="p-1.5 hover:bg-red-50 text-red-500 rounded" title="Delete Row"><Trash2 size={14} /></button>
+                        {/* Table Tools Dropdown */}
+                        <div className="relative z-[200]">
+                          <button 
+                            onClick={() => setShowTableToolsMenu(!showTableToolsMenu)}
+                            className="flex items-center gap-1.5 px-2 py-1 bg-white/40 hover:bg-white text-slate-700 rounded-lg text-xs font-bold transition-all"
+                            title="Table Tools"
+                          >
+                            <Grid3X3 size={14} className="text-orange-600" />
+                            Table Tools
+                            <ChevronDown size={12} className={`transition-transform duration-200 ${showTableToolsMenu ? 'rotate-180' : ''}`} />
+                          </button>
+                          
+                          {showTableToolsMenu && (
+                            <div className="absolute right-0 top-full mt-2 z-[250] w-52 bg-white rounded-2xl shadow-2xl border border-slate-200 p-2.5 flex flex-col gap-1.5 animate-in slide-in-from-top-2 duration-150">
+                              {activeTableCell ? (
+                                <>
+                                  <div className="px-2 py-1 text-[10px] font-black text-slate-400 uppercase tracking-wider">Word-Style Controls</div>
+                                  <div className="grid grid-cols-2 gap-1 col-span-2">
+                                    <button 
+                                      onClick={() => { addRow('above'); setShowTableToolsMenu(false); }}
+                                      className="flex items-center gap-1.5 p-1.5 hover:bg-orange-50 text-slate-700 hover:text-orange-700 rounded-xl transition-colors font-bold text-xs"
+                                    >
+                                      <ArrowUp size={12} className="text-orange-500" />
+                                      Row Up
+                                    </button>
+                                    <button 
+                                      onClick={() => { addRow('below'); setShowTableToolsMenu(false); }}
+                                      className="flex items-center gap-1.5 p-1.5 hover:bg-orange-50 text-slate-700 hover:text-orange-700 rounded-xl transition-colors font-bold text-xs"
+                                    >
+                                      <ArrowDown size={12} className="text-orange-500" />
+                                      Row Down
+                                    </button>
+                                    <button 
+                                      onClick={() => { addColumn('left'); setShowTableToolsMenu(false); }}
+                                      className="flex items-center gap-1.5 p-1.5 hover:bg-orange-50 text-slate-700 hover:text-orange-700 rounded-xl transition-colors font-bold text-xs"
+                                    >
+                                      <ArrowLeft size={12} className="text-orange-500" />
+                                      Col Left
+                                    </button>
+                                    <button 
+                                      onClick={() => { addColumn('right'); setShowTableToolsMenu(false); }}
+                                      className="flex items-center gap-1.5 p-1.5 hover:bg-orange-50 text-slate-700 hover:text-orange-700 rounded-xl transition-colors font-bold text-xs"
+                                    >
+                                      <ArrowRight size={12} className="text-orange-500" />
+                                      Col Right
+                                    </button>
+                                  </div>
+                                  <div className="h-px bg-slate-100 my-0.5" />
+                                  <div className="grid grid-cols-2 gap-1 col-span-2">
+                                    <button 
+                                      onClick={() => { deleteTableElement('row'); setShowTableToolsMenu(false); }}
+                                      className="flex items-center gap-1.5 p-1.5 hover:bg-red-50 text-red-600 rounded-xl transition-colors font-bold text-xs"
+                                    >
+                                      <Trash2 size={12} className="text-red-500" />
+                                      Del Row
+                                    </button>
+                                    <button 
+                                      onClick={() => { deleteTableElement('col'); setShowTableToolsMenu(false); }}
+                                      className="flex items-center gap-1.5 p-1.5 hover:bg-red-50 text-red-600 rounded-xl transition-colors font-bold text-xs"
+                                    >
+                                      <Trash2 size={12} className="text-red-500 rotate-90" />
+                                      Del Col
+                                    </button>
+                                  </div>
+                                </>
+                              ) : (
+                                <div className="p-3 text-center text-xs text-slate-500 font-bold leading-relaxed">
+                                  <Grid3X3 size={20} className="mx-auto mb-2 text-slate-400" />
+                                  💡 Click inside any table first to add/delete rows & columns!
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
 
                     <div className="h-6 w-px bg-white/30 mx-1" />
 
-                    <div className="flex gap-1 bg-white/40 p-1 rounded-lg shrink-0 overflow-visible z-[150]">
-                      <div className="flex items-center gap-2 relative group/textcolor">
-                        <button className="flex items-center gap-1 p-0.5 hover:bg-white rounded transition-colors" title="Font Color">
-                          <Palette size={14} className="text-slate-600" />
-                          <span className="text-[10px] text-slate-500">▼</span>
-                        </button>
-                        <div className="absolute hidden group-hover/textcolor:grid grid-cols-4 gap-2 top-full right-0 bg-white shadow-xl border border-slate-200 p-2 rounded-xl w-[130px]">
-                          {textColors.map(c => (
-                            <button
-                              key={c.value}
-                              onClick={() => applyTextColor(c.value, true)} // assuming main toolbar applies to current selection
-                              className={`w-5 h-5 rounded-full border-2 transition-all hover:scale-110 shadow-sm mx-auto border-slate-200`}
-                              style={{ backgroundColor: c.value === 'transparent' ? '#f8fafc' : c.value }}
-                              title={c.name}
-                            >
-                              {c.value === 'transparent' && <span className="text-[8px] font-black opacity-30">✕</span>}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="w-px h-4 bg-white/30 self-center mx-1" />
-
-                      <div className="flex items-center gap-2 relative group/color">
-                        <button className="flex items-center gap-1 p-0.5 hover:bg-white rounded transition-colors" title="Highlight Color">
-                          <Highlighter size={14} className={activeColor ? 'text-orange-500 animate-pulse' : 'text-slate-600'} />
-                          <span className="text-[10px] text-slate-500">▼</span>
-                        </button>
-                        <div className="absolute hidden group-hover/color:grid grid-cols-5 gap-2 top-full right-0 bg-white shadow-xl border border-slate-200 p-2 rounded-xl w-[160px]">
-                          {colors.map(c => (
-                            <button
-                              key={c.value}
-                              onClick={() => {
-                                setActiveColor(activeColor === c.value ? null : c.value);
-                                applyColor(c.value, true); // Apply immediately to selection if any
-                              }}
-                              className={`w-5 h-5 rounded-full border-2 transition-all hover:scale-110 shadow-sm mx-auto ${activeColor === c.value ? 'border-orange-500 scale-125' : 'border-slate-200'}`}
-                              style={{ backgroundColor: c.value === 'transparent' ? '#f8fafc' : c.value }}
-                              title={c.name}
-                            >
-                              {c.value === 'transparent' && <span className="text-[8px] font-black opacity-30">✕</span>}
-                            </button>
-                          ))}
-                        </div>
-                        {activeColor && (
-                          <button onClick={() => setActiveColor(null)} className="text-[9px] font-black bg-white/60 hover:bg-white px-1.5 rounded uppercase tracking-tighter text-slate-500">
-                            Stop
-                          </button>
-                        )}
-                      </div>
-                    </div>
+                    {/* Colors toolbar hidden for clean presentation */}
                     
                     <div className="h-6 w-px bg-white/30 mx-1" />
                     
@@ -1492,6 +2448,200 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                           </div>
                         )}
                       </div>
+
+                      {/* Table Tools Dropdown */}
+                      <div className="relative z-[200]">
+                        <button 
+                          onClick={() => setShowTableToolsMenu(!showTableToolsMenu)}
+                          className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-lg text-xs font-bold shadow-sm transition-all font-sans"
+                          title="Table Tools"
+                        >
+                          <Grid3X3 size={14} className="text-orange-600" />
+                          Table Tools
+                          <ChevronDown size={12} className={`transition-transform duration-200 ${showTableToolsMenu ? 'rotate-180' : ''}`} />
+                        </button>
+                        
+                        {showTableToolsMenu && (
+                          <div className="absolute right-0 top-full mt-2 z-[250] w-56 bg-white rounded-2xl shadow-2xl border border-slate-200 p-2.5 flex flex-col gap-1.5 animate-in slide-in-from-top-2 duration-150">
+                            {activeTableCell ? (
+                              <>
+                                <div className="px-2 py-1 text-[10px] font-black text-slate-400 uppercase tracking-wider">Word-Style Controls</div>
+                                <div className="grid grid-cols-2 gap-1">
+                                  <button 
+                                    onClick={() => { addRow('above'); setShowTableToolsMenu(false); }}
+                                    className="flex items-center gap-1.5 p-2 hover:bg-orange-50 text-slate-700 hover:text-orange-700 rounded-xl transition-colors font-bold text-xs"
+                                    title="Insert Row Above"
+                                  >
+                                    <ArrowUp size={12} className="text-orange-500" />
+                                    Row Above
+                                  </button>
+                                  <button 
+                                    onClick={() => { addRow('below'); setShowTableToolsMenu(false); }}
+                                    className="flex items-center gap-1.5 p-2 hover:bg-orange-50 text-slate-700 hover:text-orange-700 rounded-xl transition-colors font-bold text-xs"
+                                    title="Insert Row Below"
+                                  >
+                                    <ArrowDown size={12} className="text-orange-500" />
+                                    Row Below
+                                  </button>
+                                  <button 
+                                    onClick={() => { addColumn('left'); setShowTableToolsMenu(false); }}
+                                    className="flex items-center gap-1.5 p-2 hover:bg-orange-50 text-slate-700 hover:text-orange-700 rounded-xl transition-colors font-bold text-xs"
+                                    title="Insert Column Left"
+                                  >
+                                    <ArrowLeft size={12} className="text-orange-500" />
+                                    Col Left
+                                  </button>
+                                  <button 
+                                    onClick={() => { addColumn('right'); setShowTableToolsMenu(false); }}
+                                    className="flex items-center gap-1.5 p-2 hover:bg-orange-50 text-slate-700 hover:text-orange-700 rounded-xl transition-colors font-bold text-xs"
+                                    title="Insert Column Right"
+                                  >
+                                    <ArrowRight size={12} className="text-orange-500" />
+                                    Col Right
+                                  </button>
+                                </div>
+                                <div className="h-px bg-slate-100 my-0.5" />
+                                <div className="grid grid-cols-2 gap-1">
+                                  <button 
+                                    onClick={() => { deleteTableElement('row'); setShowTableToolsMenu(false); }}
+                                    className="flex items-center gap-1.5 p-2 hover:bg-red-50 text-red-600 rounded-xl transition-colors font-bold text-xs"
+                                    title="Delete Row"
+                                  >
+                                    <Trash2 size={12} className="text-red-500" />
+                                    Delete Row
+                                  </button>
+                                  <button 
+                                    onClick={() => { deleteTableElement('col'); setShowTableToolsMenu(false); }}
+                                    className="flex items-center gap-1.5 p-2 hover:bg-red-50 text-red-600 rounded-xl transition-colors font-bold text-xs"
+                                    title="Delete Column"
+                                  >
+                                    <Trash2 size={12} className="text-red-500 rotate-90" />
+                                    Delete Col
+                                  </button>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="p-3 text-center text-xs text-slate-500 font-bold leading-relaxed">
+                                <Grid3X3 size={20} className="mx-auto mb-2 text-slate-400" />
+                                💡 Click inside any table first to add/delete rows & columns!
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* MORE Tools Dropdown (Includes AI Enhance, Upload File, Synthesis Cards, Q&A Board) */}
+                      <div className="relative z-[200]">
+                        <button 
+                          onClick={() => setShowMoreMenu(!showMoreMenu)}
+                          className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-lg text-xs font-bold shadow-sm transition-all font-sans"
+                          title="More Actions & Layouts"
+                        >
+                          <MoreHorizontal size={14} />
+                          More
+                          <ChevronDown size={12} className={`transition-transform duration-200 ${showMoreMenu ? 'rotate-180' : ''}`} />
+                        </button>
+                        
+                        {showMoreMenu && (
+                          <div className="absolute right-0 bottom-full mb-2 z-[250] w-[220px] bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 flex flex-col gap-4 animate-in slide-in-from-bottom-2 duration-150">
+                            <div>
+                              <div className="text-[10px] font-black uppercase text-indigo-400 tracking-wider mb-2 flex items-center gap-1.5">
+                                <Wand2 size={12} className="text-indigo-500" />
+                                AI Assist
+                              </div>
+                              <button 
+                                onClick={() => { enhanceWithAI(); setShowMoreMenu(false); }} 
+                                disabled={isAILoading}
+                                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-indigo-50 text-indigo-700 rounded-xl transition-all font-black text-[11px] uppercase tracking-wider"
+                              >
+                                {isAILoading ? <Loader2 size={12} className="animate-spin" /> : <Wand2 size={12} />}
+                                AI Enhance Note
+                              </button>
+                            </div>
+
+                            <div className="h-px bg-slate-100" />
+
+                            <div>
+                              <div className="text-[10px] font-black uppercase text-blue-400 tracking-wider mb-2 flex items-center gap-1.5">
+                                <FileUp size={12} className="text-blue-500" />
+                                Media & Files
+                              </div>
+                              <button 
+                                onClick={() => { fileInputRef.current?.click(); setShowMoreMenu(false); }} 
+                                className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-blue-50 text-blue-700 rounded-xl transition-all font-black text-[11px] uppercase tracking-wider"
+                              >
+                                <FileUp size={12} />
+                                Upload File
+                              </button>
+                            </div>
+
+                            <div className="h-px bg-slate-100" />
+
+                            <div>
+                              <div className="text-[10px] font-black uppercase text-slate-400 tracking-wider mb-2 flex items-center gap-1.5">
+                                <Layout size={12} className="text-slate-500" />
+                                Insert Synthesis Card
+                              </div>
+                              <div className="grid grid-cols-5 gap-1.5">
+                                {[
+                                  { key: 'blue', color: 'bg-blue-500', border: 'border-blue-200', bg: 'bg-blue-50', name: 'Blue' },
+                                  { key: 'emerald', color: 'bg-emerald-500', border: 'border-emerald-200', bg: 'bg-emerald-50', name: 'Emerald' },
+                                  { key: 'rose', color: 'bg-rose-500', border: 'border-rose-200', bg: 'bg-rose-50', name: 'Rose' },
+                                  { key: 'gold', color: 'bg-yellow-400', border: 'border-yellow-200', bg: 'bg-yellow-50', name: 'Gold' },
+                                  { key: 'violet', color: 'bg-purple-500', border: 'border-purple-200', bg: 'bg-purple-50', name: 'Violet' },
+                                  { key: 'orange', color: 'bg-orange-500', border: 'border-orange-200', bg: 'bg-orange-50', name: 'Orange' },
+                                  { key: 'teal', color: 'bg-teal-500', border: 'border-teal-200', bg: 'bg-teal-50', name: 'Teal' },
+                                  { key: 'fuchsia', color: 'bg-fuchsia-500', border: 'border-fuchsia-200', bg: 'bg-fuchsia-50', name: 'Fuchsia' },
+                                  { key: 'sky', color: 'bg-sky-500', border: 'border-sky-200', bg: 'bg-sky-50', name: 'Sky' },
+                                  { key: 'slate', color: 'bg-slate-500', border: 'border-slate-300', bg: 'bg-slate-50', name: 'Slate' }
+                                ].map((theme) => (
+                                  <button 
+                                    key={theme.key}
+                                    onClick={() => { insertSynthesisCard(theme.key); setShowMoreMenu(false); }}
+                                    className={`w-7 h-7 rounded-full border ${theme.border} ${theme.bg} flex items-center justify-center hover:scale-110 active:scale-95 transition-all animate-in zoom-in-50 duration-200`}
+                                    title={`${theme.name} Synthesis Card`}
+                                  >
+                                    <span className={`w-3 h-3 rounded-full ${theme.color}`} />
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div className="h-px bg-slate-100" />
+
+                            <div>
+                              <div className="text-[10px] font-black uppercase text-slate-400 tracking-wider mb-2 flex items-center gap-1.5">
+                                <CheckSquare size={12} className="text-slate-600" />
+                                Insert Q&A Board
+                              </div>
+                              <div className="grid grid-cols-5 gap-1.5">
+                                {[
+                                  { key: 'slate', color: 'bg-slate-500', border: 'border-slate-200', bg: 'bg-slate-50', name: 'Slate' },
+                                  { key: 'emerald', color: 'bg-emerald-500', border: 'border-emerald-200', bg: 'bg-emerald-50', name: 'Emerald' },
+                                  { key: 'indigo', color: 'bg-indigo-500', border: 'border-indigo-200', bg: 'bg-indigo-50', name: 'Indigo' },
+                                  { key: 'amber', color: 'bg-amber-500', border: 'border-amber-200', bg: 'bg-amber-50', name: 'Amber' },
+                                  { key: 'purple', color: 'bg-purple-500', border: 'border-purple-200', bg: 'bg-purple-50', name: 'Purple' },
+                                  { key: 'rose', color: 'bg-rose-500', border: 'border-rose-200', bg: 'bg-rose-50', name: 'Rose' },
+                                  { key: 'sky', color: 'bg-sky-500', border: 'border-sky-55', name: 'Sky' },
+                                  { key: 'teal', color: 'bg-teal-500', border: 'border-teal-200', bg: 'bg-teal-50', name: 'Teal' },
+                                  { key: 'orange', color: 'bg-orange-500', border: 'border-orange-200', bg: 'bg-orange-50', name: 'Orange' },
+                                  { key: 'cyan', color: 'bg-cyan-500', border: 'border-cyan-200', bg: 'bg-cyan-50', name: 'Cyan' }
+                                ].map((theme) => (
+                                  <button 
+                                    key={theme.key}
+                                    onClick={() => { insertQABoard(theme.key); setShowMoreMenu(false); }}
+                                    className={`w-7 h-7 rounded-full border ${theme.border} ${theme.bg} flex items-center justify-center hover:scale-110 active:scale-95 transition-all animate-in zoom-in-50 duration-200`}
+                                    title={`${theme.name} Q&A Board`}
+                                  >
+                                    <span className={`w-3 h-3 rounded-full ${theme.color}`} />
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
                       <button onClick={insertDate} className="flex items-center gap-2 px-3 py-1.5 bg-orange-500 text-white rounded-lg text-xs font-bold hover:bg-orange-600 shadow-sm transition-colors">
                         <Calendar size={14} /> Insert Date
                       </button>
@@ -1625,50 +2775,22 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                 })()}
 
                 {(() => {
-                  const isDarkPaper = selectedPaper.id === 'stars' || selectedPaper.id === 'none';
-                  const editorTextColor = isDarkPaper ? '#f8fafc' : '#1e293b';
-                  const editorHeaderColor = isDarkPaper ? '#ffedd5' : '#0f172a';
-                  const editorBorderColor = isDarkPaper ? '#475569' : '#cbd5e1';
-                  const editorCardBgColor = isDarkPaper ? 'rgba(30, 41, 59, 0.8)' : 'rgba(254, 243, 199, 0.8)';
+                  const editorTextColor = '#1e293b';
+                  const editorHeaderColor = '#0f172a';
+                  const editorBorderColor = '#cbd5e1';
+                  const editorCardBgColor = '#f1f5f9';
                   
                   return (
                     <style dangerouslySetInnerHTML={{ __html: `
                       .editor-content {
-                        color: ${editorTextColor} !important;
+                        color: ${editorTextColor};
                       }
                       
                       .editor-content p, 
                       .editor-content li, 
-                      .editor-content span, 
-                      .editor-content div, 
-                      .editor-content font,
-                      .editor-content td, 
-                      .editor-content th, 
-                      .editor-content blockquote {
+                      .editor-content div {
                         color: ${editorTextColor};
                       }
-                      
-                      ${isDarkPaper ? `
-                        .editor-content .text-slate-900,
-                        .editor-content .text-slate-800,
-                        .editor-content .text-slate-700,
-                        .editor-content .text-slate-600,
-                        .editor-content .text-gray-900,
-                        .editor-content .text-gray-800,
-                        .editor-content .text-neutral-900,
-                        .editor-content .text-black,
-                        .editor-content [class*="text-slate-"],
-                        .editor-content [class*="text-gray-"],
-                        .editor-content [class*="text-neutral-"] {
-                          color: ${editorTextColor} !important;
-                        }
-                      ` : `
-                        .editor-content .text-slate-100,
-                        .editor-content .text-white,
-                        .editor-content [class*="text-slate-100"] {
-                          color: ${editorTextColor} !important;
-                        }
-                      `}
                       
                       .editor-content h1, 
                       .editor-content h2, 
@@ -1680,22 +2802,90 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                         font-weight: 800 !important;
                       }
                       
+                      .editor-content table {
+                        border-collapse: collapse !important;
+                        width: 100% !important;
+                        border: ${tableBorderThickness + 0.5}px solid ${tableBorderColor};
+                      }
+
                       .editor-content th, 
                       .editor-content td {
-                        border: 1px solid ${editorBorderColor} !important;
-                        padding: 10px !important;
+                        border: ${tableBorderThickness}px solid ${tableBorderColor};
+                        padding: 12px 14px !important;
                         color: ${editorTextColor} !important;
                       }
                       
-                      .editor-content .synthesis-card-wrapper, 
-                      .editor-content .qa-board-wrapper,
+                      /* Lightbox styling to guarantee that custom templates (study plan, action plan) have a gorgeous light design on any background */
                       .editor-content .study-plan-card,
                       .editor-content .action-plan-card {
                         border: 2px solid ${editorBorderColor} !important;
                         background-color: ${editorCardBgColor} !important;
+                        background: ${editorCardBgColor} !important;
                         color: ${editorTextColor} !important;
                         border-radius: 16px !important;
                         padding: 18px !important;
+                        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important;
+                      }
+
+                      /* Synthesis Cards and QA Boards use the user-selected theme colors for their backgrounds, borders, and main layout natively! */
+                      .editor-content .synthesis-card-wrapper, 
+                      .editor-content .qa-board-wrapper {
+                        border-radius: 20px !important;
+                        padding: 20px !important;
+                        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03) !important;
+                        margin: 18px 0 !important;
+                      }
+
+                      .editor-content .study-plan-card h1,
+                      .editor-content .study-plan-card h2,
+                      .editor-content .study-plan-card h3,
+                      .editor-content .action-plan-card h1,
+                      .editor-content .action-plan-card h2,
+                      .editor-content .action-plan-card h3 {
+                        color: ${editorHeaderColor} !important;
+                      }
+
+                      .editor-content .study-plan-card p, 
+                      .editor-content .study-plan-card li, 
+                      .editor-content .study-plan-card div,
+                      .editor-content .action-plan-card p, 
+                      .editor-content .action-plan-card li, 
+                      .editor-content .action-plan-card div {
+                        color: ${editorTextColor} !important;
+                      }
+
+                      /* Ensure unstyled spans inside template cards are readable, while preserving custom highlighted/colored texts */
+                      .editor-content .study-plan-card span:not([style*="color"]):not([style*="background-color"]),
+                      .editor-content .action-plan-card span:not([style*="color"]):not([style*="background-color"]) {
+                        color: ${editorTextColor} !important;
+                      }
+
+                      /* Force elegant light design on template elements with dark classes or hardcoded dark background behaviors */
+                      .editor-content [class*="bg-slate-9"],
+                      .editor-content [class*="bg-zinc-9"],
+                      .editor-content [class*="bg-gray-9"],
+                      .editor-content [class*="bg-neutral-9"],
+                      .editor-content [class*="bg-[#0f"],
+                      .editor-content [class*="bg-[#1e"],
+                      .editor-content [class*="bg-[#11"],
+                      .editor-content [class*="bg-[#0a"],
+                      .editor-content [class*="bg-[#18"],
+                      .editor-content [class*="bg-[#1c"],
+                      .editor-content [class*="bg-black"] {
+                        background-color: ${editorCardBgColor} !important;
+                        background: ${editorCardBgColor} !important;
+                        border: 1.5px solid ${editorBorderColor} !important;
+                        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important;
+                      }
+
+                      .editor-content [class*="bg-slate-9"] p,
+                      .editor-content [class*="bg-slate-9"] div,
+                      .editor-content [class*="bg-slate-9"] span:not([style*="color"]):not([style*="background-color"]),
+                      .editor-content [class*="bg-zinc-9"] p,
+                      .editor-content [class*="bg-[#1e"] p,
+                      .editor-content [class*="bg-[#1e"] div,
+                      .editor-content [class*="bg-[#1e"] span:not([style*="color"]):not([style*="background-color"]) {
+                        color: ${editorTextColor} !important;
                       }
 
                       .editor-content a {
@@ -1724,6 +2914,10 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                     onClick={handleEditorClick}
                     onMouseUp={handleSelection}
                     onKeyUp={handleSelection}
+                    onKeyDown={handleEditorKeyDown}
+                    onMouseMove={handleEditorMouseMove}
+                    onMouseDown={handleEditorMouseDown}
+                    onTouchStart={handleEditorTouchStart}
                     onBlur={(e) => {
                       updateTopic(selectedTopic.id, { content: e.currentTarget.innerHTML });
                     }}
@@ -1733,8 +2927,10 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                       fontSize: `${textFontSize}px`,
                       fontFamily: textFontFamily
                     }}
-                    className={`editor-content w-full flex-1 outline-none p-8 rounded-3xl ${selectedPaper.id === 'stars' || selectedPaper.id === 'none' ? 'text-slate-100' : 'text-slate-800'} leading-relaxed font-medium transition-all focus:ring-4 focus:ring-orange-500/10 overflow-y-auto shadow-md ${selectedPaper.className}`}
+                    className={`editor-content w-full flex-1 outline-none p-8 rounded-3xl text-slate-800 leading-relaxed font-medium transition-all focus:ring-4 focus:ring-orange-500/10 overflow-y-auto shadow-md ${selectedPaper.className}`}
                 ></div>
+
+                {/* Table bottom tool container hidden because row/column manage buttons are between Export and Insert Date */}
 
                 {isTableModalOpen && (
                   <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
@@ -1795,8 +2991,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
 
                         <div>
                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Theme Color</label>
-                          <div className="flex gap-2">
-                             {['#f97316', '#ef4444', '#10b981', '#3b82f6', '#8b5cf6', '#000000', '#ffffff', '#64748b', '#f43f5e', '#d946ef', '#14b8a6', '#0ea5e9', '#84cc16', '#eab308', '#ec4899'].map(c => (
+                          <div className="flex gap-2 mb-4">
+                             {['#f97316', '#ef4444', '#10b981', '#3b82f6', '#8b5cf6', '#ffffff', '#64748b', '#f43f5e', '#d946ef', '#14b8a6', '#0ea5e9', '#84cc16', '#eab308', '#ec4899'].map(c => (
                                <button 
                                  key={c}
                                  onClick={() => setTableConfig({...tableConfig, theme: c})}
@@ -1804,6 +3000,51 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                                  style={{ backgroundColor: c }}
                                />
                              ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Table & Grid Lines Visibility/Opacity</label>
+                          <div className="flex gap-2">
+                             {[10, 25, 50, 75, 100].map(percentage => (
+                               <button 
+                                 key={percentage}
+                                 onClick={() => setTableConfig({...tableConfig, gridOpacity: percentage})}
+                                 className={`flex-1 py-2 rounded-xl border font-black text-[11px] uppercase tracking-wider transition-all ${tableConfig.gridOpacity === percentage ? 'bg-orange-500 border-orange-500 text-white shadow-md shadow-orange-500/15' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'}`}
+                               >
+                                 {percentage}%
+                               </button>
+                             ))}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 mt-4">Grid Line Style</label>
+                          <div className="grid grid-cols-2 gap-2">
+                            {[
+                              { id: 'theme-solid', name: 'Whole Color', desc: 'Theme colors the whole table borders' },
+                              { id: 'theme-open', name: 'Color + Blank Line', desc: 'Theme borders with open sides' },
+                              { id: 'black-solid', name: 'Always Black', desc: 'Clear black borders for easy visibility' },
+                              { id: 'black-open', name: 'Black + Blank Line', desc: 'Clear black borders with open sides' }
+                            ].map(style => (
+                              <button 
+                                key={style.id}
+                                type="button"
+                                onClick={() => setTableConfig({...tableConfig, gridStyle: style.id})}
+                                className={`p-3 rounded-2xl border text-left transition-all ${
+                                  (tableConfig.gridStyle || 'theme-solid') === style.id 
+                                    ? 'bg-orange-500/10 border-orange-500 text-slate-800' 
+                                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                                }`}
+                              >
+                                <div className="text-[11px] font-black uppercase tracking-wide">
+                                  {style.name}
+                                </div>
+                                <div className="text-[9px] font-bold text-slate-400 mt-0.5">
+                                  {style.desc}
+                                </div>
+                              </button>
+                            ))}
                           </div>
                         </div>
                       </div>

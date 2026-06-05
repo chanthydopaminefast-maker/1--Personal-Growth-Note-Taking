@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { 
   LayoutDashboard, 
   LogOut, 
@@ -73,6 +73,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onUndo,
   onRedo
 }) => {
+
+  const [isOnline, setIsOnline] = useState(typeof window !== 'undefined' ? window.navigator.onLine : true);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   const handleTabSelect = (tab: Tab) => {
     setActiveTab(tab);
@@ -169,9 +184,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <div className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-white text-[10px] font-black">
                   {currentUser?.name?.[0]?.toUpperCase() || 'U'}
                 </div>
-                <div className="overflow-hidden">
+                <div className="overflow-hidden flex-1">
                   <p className="text-[10px] font-black text-slate-900 truncate tracking-tight">{currentUser?.name}</p>
                   <p className="text-[10px] font-black text-rose-600 truncate lowercase mt-0.5">{currentUser?.email || 'Local Account'}</p>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                    <span className={`text-[9px] font-black leading-none ${isOnline ? 'text-emerald-600' : 'text-amber-600/90'}`} title={isOnline ? "Connected to dynamic cloud sync" : "Offline. Notes are saved locally and will auto-sync when connection is restored."}>
+                      {isOnline ? 'Online • synced' : 'Offline • local'}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>

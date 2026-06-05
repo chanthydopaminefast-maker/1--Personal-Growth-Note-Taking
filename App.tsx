@@ -11,13 +11,14 @@ import { SettingsModal } from './components/SettingsModal';
 import { SupermanAnimation } from './components/SupermanAnimation';
 import DPSSTable from './components/DPSSTable';
 import SelfLearningTable from './components/SelfLearningTable';
+import { SharedContentFullView } from './components/SharedContentFullView';
 import { RecycleBin } from './components/RecycleBin';
 import Dashboard from './components/Dashboard';
 import { FloatingToolbar } from './components/FloatingToolbar';
 import { AppData, Student, CurrentUser, UserRole, ColumnConfig, Tab, ViewMode, AppSettings, StudentCategory, JournalEntry, ExpenseEntry } from './types';
 import { subscribeToData, saveData } from './services/firebase';
 import { storage } from './services/storage';
-import { Menu, MessageSquare, X } from 'lucide-react';
+import { Menu, MessageSquare, X, GraduationCap } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { addMonths, format } from 'date-fns';
 
@@ -107,6 +108,13 @@ const App: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('Default');
   const [globalScale, setGlobalScale] = useState(1);
   
+  // Note/Folder Sharing states
+  const [sharedNoteData, setSharedNoteData] = useState<any | null>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importingDate, setImportingDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [isFetchSharedLoading, setIsFetchSharedLoading] = useState(false);
+  const [shareFeedbackMessage, setShareFeedbackMessage] = useState<string | null>(null);
+  
   const [filters, setFilters] = useState<any>({
     searchQuery: '', 
     teacher: '', 
@@ -126,6 +134,103 @@ const App: React.FC = () => {
   useEffect(() => {
     // Left empty intentionally to prevent auto-seeding of named tasks
   }, [loading]);
+
+  // Handle URL share parameters on app load
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const shareId = urlParams.get('share');
+    if (shareId) {
+      setIsFetchSharedLoading(true);
+      import('./services/firebase').then(({ getSharedNote }) => {
+        getSharedNote(shareId).then((sharedDoc) => {
+          setIsFetchSharedLoading(false);
+          if (sharedDoc) {
+            setSharedNoteData(sharedDoc);
+            setIsImportModalOpen(true);
+            if (sharedDoc.payload?.date) {
+              setImportingDate(sharedDoc.payload.date);
+            }
+          } else {
+            alert("This shared link is invalid or has expired.");
+            // Clear URL param
+            window.history.replaceState(null, '', window.location.pathname);
+          }
+        }).catch((err) => {
+          setIsFetchSharedLoading(false);
+          console.error("Error fetching shared note", err);
+          window.history.replaceState(null, '', window.location.pathname);
+        });
+      });
+    }
+  }, []);
+
+  const handleConfirmImport = () => {
+    if (!sharedNoteData) return;
+
+    const { type, payload } = sharedNoteData;
+
+    if (type === 'self-learning') {
+      const cloneTopicWithNewIds = (topic: any): any => {
+        const newId = uuidv4();
+        return {
+          ...topic,
+          id: newId,
+          children: topic.children ? topic.children.map(cloneTopicWithNewIds) : undefined
+        };
+      };
+
+      const clonedTopic = cloneTopicWithNewIds(payload);
+      const currentTopics = data.selfLearningTopics || [];
+      const updatedTopics = [...currentTopics, clonedTopic];
+
+      handleUpdate({ ...data, selfLearningTopics: updatedTopics });
+      
+      import('./services/firebase').then(({ saveTopic }) => {
+        if (currentUser?.uid) {
+          saveTopic(currentUser.uid, clonedTopic, 'selfLearning');
+        }
+      });
+      
+      setShareFeedbackMessage("Successfully imported to your Self-learning topics!");
+
+    } else if (type === 'journal') {
+      const entry = payload.entry || payload;
+      const targetDate = importingDate;
+      const newEntries = { ...(data.journalEntries || {}), [targetDate]: entry };
+      
+      handleUpdate({ ...data, journalEntries: newEntries });
+      
+      import('./services/firebase').then(({ saveJournalEntry }) => {
+        if (currentUser?.uid) {
+          saveJournalEntry(currentUser.uid, targetDate, entry);
+        }
+      });
+      
+      setShareFeedbackMessage(`Successfully imported Journal Entry to ${targetDate}!`);
+
+    } else if (type === 'daily-note') {
+      const content = payload.content || payload;
+      const targetDate = importingDate;
+      const newNotes = { ...(data.dailyNotes || {}), [targetDate]: content };
+
+      handleUpdate({ ...data, dailyNotes: newNotes });
+
+      import('./services/firebase').then(({ saveDailyNote }) => {
+        if (currentUser?.uid) {
+          saveDailyNote(currentUser.uid, targetDate, content);
+        }
+      });
+
+      setShareFeedbackMessage(`Successfully imported Note-taking to ${targetDate}!`);
+    }
+
+    setTimeout(() => {
+      setIsImportModalOpen(false);
+      setSharedNoteData(null);
+      setShareFeedbackMessage(null);
+      window.history.replaceState(null, '', window.location.pathname);
+    }, 2000);
+  };
 
   const activeStudents = useMemo(() => data.students.filter(s => !s.deletedAt), [data.students]);
 
@@ -787,6 +892,34 @@ const App: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Dynamic Link Note Import Full View Takeover */}
+      {isImportModalOpen && sharedNoteData && (
+        <div className="fixed inset-0 z-[99999] bg-white dark:bg-slate-950 overflow-y-auto">
+          <SharedContentFullView 
+            data={sharedNoteData} 
+            onImport={(date) => {
+               if (date) setImportingDate(date);
+               handleConfirmImport();
+            }}
+            onClose={() => {
+              setIsImportModalOpen(false);
+              setSharedNoteData(null);
+              window.history.replaceState(null, '', window.location.pathname);
+            }}
+          />
+        </div>
+      )}
+
+      {/* Dynamic Link Fetch Loader */}
+      {isFetchSharedLoading && (
+        <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-sm flex items-center justify-center z-[9999] font-sans">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl shadow-xl flex items-center gap-3">
+            <span className="w-5 h-5 rounded-full border-2 border-orange-500 border-t-transparent animate-spin" />
+            <span className="text-xs font-black text-slate-800 dark:text-slate-200 tracking-wider uppercase">Fetching shared content...</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

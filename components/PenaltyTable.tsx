@@ -106,16 +106,59 @@ export const PenaltyTable: React.FC<PenaltyTableProps> = ({
     }).sort((a, b) => a.order - b.order);
   }, [penaltyStudents, filters]);
 
+  const parseStoredDate = (str: string): Date | null => {
+    if (!str) return null;
+    str = str.trim();
+    // Case 1: already MMMM d, yyyy (e.g., July 26, 2026)
+    const parsedWord = Date.parse(str);
+    if (!isNaN(parsedWord)) {
+      return new Date(parsedWord);
+    }
+    // Case 2: dd/MM/yy
+    if (str.includes('/')) {
+      const parts = str.split('/');
+      if (parts.length === 3) {
+        const d = Number(parts[0]);
+        const m = Number(parts[1]) - 1;
+        let y = Number(parts[2]);
+        if (y < 100) y += 2000;
+        const date = new Date(y, m, d);
+        if (!isNaN(date.getTime())) return date;
+      }
+    }
+    // Case 3: yyyy-mm-dd
+    if (str.includes('-')) {
+      const parts = str.split('-');
+      if (parts.length === 3) {
+        const y = Number(parts[0]);
+        const m = Number(parts[1]) - 1;
+        const d = Number(parts[2]);
+        const date = new Date(y, m, d);
+        if (!isNaN(date.getTime())) return date;
+      }
+    }
+    return null;
+  };
+
   const isoToDisplay = (iso: string) => {
       if (!iso) return '';
-      const [y, m, d] = iso.split('-');
-      return `${d}/${m}/${y.slice(2)}`;
+      const parsed = parseStoredDate(iso);
+      if (parsed) {
+        return format(parsed, 'MMMM d, yyyy');
+      }
+      return iso;
   };
 
   const displayToIso = (display: string) => {
-      if (!display || !display.includes('/')) return '';
-      const [d, m, y] = display.split('/');
-      return `20${y}-${m}-${d}`;
+      if (!display) return '';
+      const parsed = parseStoredDate(display);
+      if (parsed) {
+        const y = parsed.getFullYear();
+        const m = String(parsed.getMonth() + 1).padStart(2, '0');
+        const d = String(parsed.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+      }
+      return '';
   };
 
   const updateField = (id: string, key: string, val: any) => {
@@ -127,7 +170,7 @@ export const PenaltyTable: React.FC<PenaltyTableProps> = ({
           const dateKey = `penaltyDate${num}`;
           const currentStudent = students.find(s => s.id === id);
           if (currentStudent && !currentStudent[dateKey]) {
-              updates[dateKey] = format(new Date(), 'dd/MM/yy');
+              updates[dateKey] = format(new Date(), 'MMMM d, yyyy');
           }
       }
       
