@@ -2900,6 +2900,19 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
                       onChange={handleFileUpload}
                       className="hidden"
                     />
+
+                    {selectedTopic && (
+                      <button 
+                        onClick={() => handleShareTopic(selectedTopic)}
+                        disabled={sharingTopicId === selectedTopic.id}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-600 border border-orange-200 rounded-lg text-xs font-bold shadow-sm transition-all font-sans shrink-0 disabled:opacity-50"
+                        title="Share this note"
+                      >
+                        <Share2 size={14} className={sharingTopicId === selectedTopic.id ? "animate-spin" : ""} />
+                        <span className="hidden sm:inline">Share</span>
+                      </button>
+                    )}
+
                         <div className="relative z-[200]">
                           <button 
                             onClick={() => setShowExportMenu(!showExportMenu)}
