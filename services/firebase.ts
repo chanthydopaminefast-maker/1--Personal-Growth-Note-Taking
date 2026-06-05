@@ -677,6 +677,24 @@ export const getCloudBackups = async (): Promise<Partial<BackupEntry>[]> => {
 export const getSyncStatus = () => !isOffline;
 
 // Global Shared note helper functions
+const sanitizeForFirestore = (obj: any): any => {
+  if (obj === undefined) return null;
+  if (obj === null || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) {
+    return obj.map(item => sanitizeForFirestore(item)).filter(item => item !== undefined);
+  }
+  const result: any = {};
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      const value = obj[key];
+      if (value !== undefined) {
+        result[key] = sanitizeForFirestore(value);
+      }
+    }
+  }
+  return result;
+};
+
 export const createSharedNote = async (
   userId: string,
   ownerName: string,
@@ -686,15 +704,15 @@ export const createSharedNote = async (
 ): Promise<string> => {
   const shareId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
   const shareRef = doc(db, 'sharedNotes', shareId);
-  await setDoc(shareRef, {
+  await setDoc(shareRef, sanitizeForFirestore({
     id: shareId,
     ownerId: userId,
     ownerName: ownerName,
     type: type,
-    title: title,
+    title: title || 'Untitled',
     payload: payload,
     createdAt: new Date().toISOString()
-  });
+  }));
   return shareId;
 };
 
