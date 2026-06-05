@@ -70,15 +70,13 @@ service cloud.firestore {
       }
     }
 
-    // Helper validation for SharedNote
+    // Helper validation for SharedNote (robust and simple)
     function isValidSharedNote(data) {
       return data is map &&
              data.get('id', '') is string && data.get('id', '').size() <= 128 &&
              data.get('ownerId', '') is string && data.get('ownerId', '').size() <= 128 &&
-             data.get('ownerName', '') is string && data.get('ownerName', '').size() <= 128 &&
-             data.get('type', '') is string && data.get('type', '').size() <= 50 &&
-             data.get('title', '') is string && data.get('title', '').size() <= 256 &&
-             data.get('payload', {}) is map;
+             data.get('type', '') is string && data.get('type', '').size() <= 100 &&
+             data.get('title', '') is string && data.get('title', '').size() <= 500;
     }
 
     match /sharedNotes/{shareId} {
