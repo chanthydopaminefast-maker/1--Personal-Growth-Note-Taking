@@ -2198,9 +2198,9 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
       
       const link = window.location.origin + window.location.pathname + '?share=' + shareId;
       setGeneratedShareLink(link);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      alert("Failed to generate shared link. Please check your internet connection.");
+      alert(`Failed to generate shared link: ${error?.message || error || 'Unknown error'}`);
     } finally {
       setSharingTopicId(null);
     }

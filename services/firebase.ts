@@ -704,15 +704,16 @@ export const createSharedNote = async (
 ): Promise<string> => {
   const shareId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
   const shareRef = doc(db, 'sharedNotes', shareId);
-  await setDoc(shareRef, sanitizeForFirestore({
-    id: shareId,
-    ownerId: userId,
-    ownerName: ownerName,
-    type: type,
-    title: title || 'Untitled',
-    payload: payload,
+  const safeData = {
+    id: String(shareId),
+    ownerId: String(userId || 'unknown').substring(0, 120),
+    ownerName: String(ownerName || 'Chanthy').substring(0, 120),
+    type: String(type || 'self-learning').substring(0, 45),
+    title: String(title || 'Untitled').substring(0, 250),
+    payload: sanitizeForFirestore(payload || {}),
     createdAt: new Date().toISOString()
-  }));
+  };
+  await setDoc(shareRef, safeData);
   return shareId;
 };
 
