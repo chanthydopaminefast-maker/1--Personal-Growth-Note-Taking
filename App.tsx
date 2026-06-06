@@ -16,7 +16,7 @@ import { RecycleBin } from './components/RecycleBin';
 import Dashboard from './components/Dashboard';
 import { FloatingToolbar } from './components/FloatingToolbar';
 import { AppData, Student, CurrentUser, UserRole, ColumnConfig, Tab, ViewMode, AppSettings, StudentCategory, JournalEntry, ExpenseEntry } from './types';
-import { subscribeToData, saveData, auth } from './services/firebase';
+import { subscribeToData, saveData, auth, signInWithGoogle, logOut } from './services/firebase';
 import { storage } from './services/storage';
 import { Menu, MessageSquare, X, GraduationCap } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
@@ -667,9 +667,8 @@ const App: React.FC = () => {
     });
   };
 
-  const handleLogin = async (_name: string, role: UserRole, _pin: string) => {
+  const handleLogin = async (_name?: string, role: UserRole = 'Admin', _pin?: string) => {
     try {
-      const { signInWithGoogle } = await import('./services/firebase');
       const result = await signInWithGoogle();
       if (result) {
         const user: CurrentUser = { 
@@ -695,7 +694,6 @@ const App: React.FC = () => {
 
   const handleLogout = async () => {
     try {
-      const { logOut } = await import('./services/firebase');
       await logOut();
     } catch(e) {}
     setCurrentUser(null);
