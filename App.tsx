@@ -61,15 +61,18 @@ const App: React.FC = () => {
         setCurrentUser(newUser);
         localStorage.setItem('dps_user', JSON.stringify(newUser));
       } else {
-        // If Firebase says no user, but we had a UID from localStorage, we should clear it
-        // to stay in sync with the real Firebase state.
-        const stored = localStorage.getItem('dps_user');
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (parsed.uid) {
-            const localUser: CurrentUser = { name: 'Local User', role: 'Admin' as UserRole };
-            setCurrentUser(localUser);
-            localStorage.setItem('dps_user', JSON.stringify(localUser));
+        // If we are inside an iframe (like the AI Studio Preview environment), third-party cookies/storage are blocked.
+        // This causes onAuthStateChanged to return null. We should preserve the session in localStorage as a fallback.
+        const isInsideIframe = window.self !== window.top;
+        if (!isInsideIframe) {
+          const stored = localStorage.getItem('dps_user');
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (parsed.uid) {
+              const localUser: CurrentUser = { name: 'Local User', role: 'Admin' as UserRole };
+              setCurrentUser(localUser);
+              localStorage.setItem('dps_user', JSON.stringify(localUser));
+            }
           }
         }
       }
@@ -319,6 +322,9 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    if (isAuthInitializing) {
+      return;
+    }
     const uid = currentUser?.uid;
     if (!uid) {
       setLoading(false);
@@ -355,7 +361,7 @@ const App: React.FC = () => {
       setLoading(false);
     }, () => setLoading(false));
     return () => unsubscribe();
-  }, [currentUser?.uid]);
+  }, [currentUser?.uid, isAuthInitializing]);
 
   const handlePermanentDeleteStudent = async (id: string) => {
     const updatedStudents = data.students.filter(s => s.id !== id);
