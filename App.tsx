@@ -16,7 +16,7 @@ import { RecycleBin } from './components/RecycleBin';
 import Dashboard from './components/Dashboard';
 import { FloatingToolbar } from './components/FloatingToolbar';
 import { AppData, Student, CurrentUser, UserRole, ColumnConfig, Tab, ViewMode, AppSettings, StudentCategory, JournalEntry, ExpenseEntry } from './types';
-import { subscribeToData, saveData } from './services/firebase';
+import { subscribeToData, saveData, auth } from './services/firebase';
 import { storage } from './services/storage';
 import { Menu, MessageSquare, X, GraduationCap } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
@@ -36,26 +36,43 @@ const DEFAULT_COLUMNS: ColumnConfig[] = [
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(() => {
-    const stored = localStorage.getItem('dps_user');
-    return stored ? JSON.parse(stored) : { name: 'Local User', role: 'Admin' };
+    try {
+      const stored = localStorage.getItem('dps_user');
+      return stored ? JSON.parse(stored) : { name: 'Local User', role: 'Admin' };
+    } catch (e) {
+      return { name: 'Local User', role: 'Admin' };
+    }
   });
 
+  const [isAuthInitializing, setIsAuthInitializing] = useState(true);
+
   useEffect(() => {
-    let unsubscribeAuth: any = () => {};
-    import('./services/firebase').then(({ auth }) => {
-      unsubscribeAuth = auth.onAuthStateChanged((user) => {
-        if (user) {
-          const role = (localStorage.getItem('dps_user') ? JSON.parse(localStorage.getItem('dps_user')!).role : 'Admin') || 'Admin';
-          const newUser: CurrentUser = { 
-            name: user.displayName || 'User', 
-            role, 
-            uid: user.uid,
-            email: user.email 
-          };
-          setCurrentUser(newUser);
-          localStorage.setItem('dps_user', JSON.stringify(newUser));
+    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
+      setIsAuthInitializing(false);
+      if (user) {
+        const stored = localStorage.getItem('dps_user');
+        const role = (stored ? JSON.parse(stored).role : 'Admin') || 'Admin';
+        const newUser: CurrentUser = { 
+          name: user.displayName || 'User', 
+          role, 
+          uid: user.uid,
+          email: user.email 
+        };
+        setCurrentUser(newUser);
+        localStorage.setItem('dps_user', JSON.stringify(newUser));
+      } else {
+        // If Firebase says no user, but we had a UID from localStorage, we should clear it
+        // to stay in sync with the real Firebase state.
+        const stored = localStorage.getItem('dps_user');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed.uid) {
+            const localUser: CurrentUser = { name: 'Local User', role: 'Admin' as UserRole };
+            setCurrentUser(localUser);
+            localStorage.setItem('dps_user', JSON.stringify(localUser));
+          }
         }
-      });
+      }
     });
     return () => unsubscribeAuth();
   }, []);
@@ -302,12 +319,13 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!currentUser?.uid) {
+    const uid = currentUser?.uid;
+    if (!uid) {
       setLoading(false);
       return;
     }
     setLoading(true);
-    const unsubscribe = subscribeToData(currentUser.uid, (newData) => {
+    const unsubscribe = subscribeToData(uid, (newData) => {
       // Ensure DEFAULT_COLUMNS are initialized
       if (!newData.settings?.columns) {
           newData.settings = { ...(newData.settings || { fontSize: 12, fontFamily: "'Inter', sans-serif" }), columns: DEFAULT_COLUMNS };
@@ -337,7 +355,7 @@ const App: React.FC = () => {
       setLoading(false);
     }, () => setLoading(false));
     return () => unsubscribe();
-  }, [currentUser]);
+  }, [currentUser?.uid]);
 
   const handlePermanentDeleteStudent = async (id: string) => {
     const updatedStudents = data.students.filter(s => s.id !== id);
@@ -647,14 +665,16 @@ const App: React.FC = () => {
     try {
       const { signInWithGoogle } = await import('./services/firebase');
       const result = await signInWithGoogle();
-      const user: CurrentUser = { 
-        name: result?.displayName || 'User', 
-        role, 
-        uid: result?.uid,
-        email: result?.email
-      };
-      setCurrentUser(user);
-      localStorage.setItem('dps_user', JSON.stringify(user));
+      if (result) {
+        const user: CurrentUser = { 
+          name: result.displayName || 'User', 
+          role, 
+          uid: result.uid,
+          email: result.email
+        };
+        setCurrentUser(user);
+        localStorage.setItem('dps_user', JSON.stringify(user));
+      }
     } catch (error: any) {
       console.error(error);
       alert(`Google Sign-In failed: ${error.message || "Please check your network and configuration"}\n\nTroubleshooting:\n1. If you are previewing this app inside the AI Studio frame, please open the application in a NEW TAB using the button in the top right, as browser privacy policies block auth popups/redirects inside third-party iframes.\n2. Ensure the Google Sign-in provider is enabled in your Firebase Console (Authentication > Sign-in method).\n3. If you want to sync instantly, you can also register/login with the Email & Password option provided!`);
