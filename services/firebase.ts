@@ -12,7 +12,7 @@ import {
   writeBatch,
   getDoc
 } from 'firebase/firestore';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signInWithEmailAndPassword, createUserWithEmailAndPassword, setPersistence, browserLocalPersistence } from 'firebase/auth'; 
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, setPersistence, browserLocalPersistence } from 'firebase/auth'; 
 import { AppData, BackupEntry, Student } from '../types';
 import firebaseConfig from '../firebase-applet-config.json';
 import { storage } from './storage';
@@ -30,11 +30,6 @@ export const db = initializeFirestore(app, {
 export const auth = getAuth(app);
 // Explicitly set persistence to LOCAL to ensure sessions survive reloads/redeploys
 setPersistence(auth, browserLocalPersistence).catch(console.error);
-
-// Check if we just came back from a redirect and handle any errors
-getRedirectResult(auth).catch((error) => {
-  console.error("Google Redirect Auth Error:", error);
-});
 
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
@@ -97,16 +92,8 @@ let isOffline = false;
 // Authenticate via Google
 export const signInWithGoogle = async () => {
   try {
-    const isInsideIframe = window.self !== window.top;
-    if (isInsideIframe) {
-      // In AI Studio Preview iframe, redirects are blocked so we must use popup
-      const result = await signInWithPopup(auth, googleProvider);
-      return result.user;
-    } else {
-      // In deployed/Vercel (mobile browsers), popup is blocked so we use redirect
-      await signInWithRedirect(auth, googleProvider);
-      return null;
-    }
+    const result = await signInWithPopup(auth, googleProvider);
+    return result.user;
   } catch (error) {
     console.error("Google Sign-in Error:", error);
     throw error;
