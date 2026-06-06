@@ -2224,9 +2224,6 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
             if (hasChildren) {
               setExpandedTopics(prev => ({ ...prev, [topic.id]: !prev[topic.id] }));
             }
-            if (isPlan || window.innerWidth < 768) {
-              setIsSidebarOpen(false);
-            }
           }} 
           className={`group flex items-center justify-between p-2 my-1 rounded-xl cursor-pointer border transition-all ${
             isSelected 
@@ -2413,7 +2410,6 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
         }
       }
       setSelectedTopicId(newTopic.id);
-      setIsSidebarOpen(false);
       
     } catch(e) {
       console.error(e);
@@ -2485,7 +2481,6 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
         onUpdate({ ...data, selfLearningTopics: updatedTopics });
       }
       setSelectedTopicId(newTopic.id);
-      setIsSidebarOpen(false);
       
     } catch(e) {
       console.error(e);

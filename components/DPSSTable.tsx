@@ -1830,9 +1830,6 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
             if (hasChildren) {
               setExpandedTopics(prev => ({ ...prev, [topic.id]: !prev[topic.id] }));
             }
-            if (window.innerWidth < 768) {
-              setIsSidebarOpen(false);
-            }
           }} 
           className={`group flex items-center justify-between p-2 my-1 rounded-xl cursor-pointer border transition-all ${
             isSelected 
