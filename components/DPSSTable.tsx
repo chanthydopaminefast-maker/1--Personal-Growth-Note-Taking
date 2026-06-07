@@ -48,7 +48,17 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
 
   const exportPDF = async () => {
     if (!editorRef.current) return;
-    const activeTopic = data?.dpssTopics?.find((t: DPSSTopic) => t.id === selectedTopicId) || { title: 'Notes' };
+    const findTopicLocal = (items: DPSSTopic[], id: string): DPSSTopic | null => {
+      for (const item of items) {
+        if (item.id === id) return item;
+        if (item.children && item.children.length > 0) {
+          const found = findTopicLocal(item.children, id);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    const activeTopic = (selectedTopicId ? findTopicLocal(data?.dpssTopics || [], selectedTopicId) : null) || { title: 'Notes' };
     
     const settings = data.settings || { fontSize: 12, fontFamily: "'Inter', sans-serif" };
     const paperStyle = settings.paperStyle || 'none';
@@ -96,15 +106,16 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
           color: ${isDark ? '#38bdf8' : '#0f172a'};
         }
         
-        /* Prevent slicing lines of text and elements horizontally during page break */
-        p, li, tr, th, td, blockquote, pre,
+        /* Prevent slicing lines of text and elements horizontally during page break (allow tables and cards to break across pages) */
+        p, li, blockquote, pre,
         h1, h2, h3, h4, h5, h6,
-        .synthesis-card-wrapper, .qa-board-wrapper,
-        .note-content > p, .note-content > div,
-        .grid > div, [class*="grid-cols"] > div,
-        [style*="border"], [style*="background"] {
+        .note-content > p {
           page-break-inside: avoid !important;
           break-inside: avoid !important;
+        }
+        tr, th, td, table, .synthesis-card-wrapper, .qa-board-wrapper {
+          page-break-inside: auto !important;
+          break-inside: auto !important;
         }
 
         .flex { display: flex !important; }
@@ -123,7 +134,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     `;
 
     const opt = {
-      margin:       [15, 15, 15, 15] as [number, number, number, number],
+      margin:       [20.32, 20.32, 20.32, 20.32] as [number, number, number, number], // 0.8 inches margin on all sides
       filename:     `${activeTopic.title || 'Notes'}.pdf`,
       image:        { type: 'jpeg' as const, quality: 0.98 },
       html2canvas:  { 
@@ -193,7 +204,17 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
 
   const exportWord = () => {
     if (!editorRef.current) return;
-    const activeTopic = data?.dpssTopics?.find((t: DPSSTopic) => t.id === selectedTopicId) || { title: 'Notes' };
+    const findTopicLocal = (items: DPSSTopic[], id: string): DPSSTopic | null => {
+      for (const item of items) {
+        if (item.id === id) return item;
+        if (item.children && item.children.length > 0) {
+          const found = findTopicLocal(item.children, id);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    const activeTopic = (selectedTopicId ? findTopicLocal(data?.dpssTopics || [], selectedTopicId) : null) || { title: 'Notes' };
     
     const settings = data.settings || { fontSize: 12, fontFamily: "'Inter', sans-serif" };
     const paperStyle = settings.paperStyle || 'none';
@@ -233,9 +254,13 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
             break-after: avoid;
             color: ${isDark ? '#38bdf8' : '#0f172a'};
           }
-          p, li, tr, .synthesis-card-wrapper, .qa-board-wrapper, table {
+          p, li {
             page-break-inside: avoid !important;
             break-inside: avoid !important;
+          }
+          tr, table, .synthesis-card-wrapper, .qa-board-wrapper {
+            page-break-inside: auto !important;
+            break-inside: auto !important;
           }
           h1 { color: ${isDark ? '#38bdf8' : '#0f172a'}; font-size: 26pt; font-weight: bold; border-bottom: 2pt solid #0369a1; padding-bottom: 10pt; margin-bottom: 20pt; }
           h2 { color: #0369a1; font-size: 18pt; margin-top: 25pt; border-left: 4pt solid #0369a1; padding-left: 10pt; }

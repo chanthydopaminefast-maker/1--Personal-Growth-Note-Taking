@@ -813,7 +813,7 @@ const App: React.FC = () => {
         className="flex-1 flex flex-col overflow-y-auto md:overflow-hidden transition-transform duration-300 origin-top-left bg-white/[0.01] backdrop-blur-md"
         style={{ transform: `scale(${globalScale})`, width: `${100/globalScale}%`, height: `${100/globalScale}%` }}
       >
-        <div className="flex-1 flex flex-col overflow-visible md:overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-visible md:overflow-hidden h-full min-h-0 w-full">
           <>
             {activeTab === Tab.HabitTracker && (
               <HabitTracker 

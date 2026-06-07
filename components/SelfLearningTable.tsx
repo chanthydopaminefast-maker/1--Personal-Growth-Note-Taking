@@ -260,14 +260,16 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
         color: ${textColor} !important;
       }
 
-      /* Avoid slicing lines vertically */
-      p, li, tr, th, td, blockquote, pre,
+      /* Avoid slicing lines vertically (allow tables and cards to break across pages) */
+      p, li, blockquote, pre,
       h1, h2, h3, h4, h5, h6,
-      .synthesis-card-wrapper, .qa-board-wrapper,
-      .export-content > p, .export-content > div,
-      .grid > div, [class*="grid-cols"] > div {
+      .export-content > p {
         page-break-inside: avoid !important;
         break-inside: avoid !important;
+      }
+      tr, th, td, table, .synthesis-card-wrapper, .qa-board-wrapper {
+        page-break-inside: auto !important;
+        break-inside: auto !important;
       }
 
       .flex { display: flex !important; }
@@ -384,7 +386,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
     exportContainer.appendChild(style);
 
     const opt = {
-      margin:       [10, 10, 10, 10] as [number, number, number, number],
+      margin:       [20.32, 20.32, 20.32, 20.32] as [number, number, number, number], // 0.8 inches margin on all sides
       filename:     `${selectedTopic.title || 'Performance-Log'}.pdf`,
       image:        { type: 'jpeg' as const, quality: 0.98 },
       html2canvas:  { 
@@ -452,9 +454,10 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
   };
 
   const exportWord = () => {
-    if (!editorRef.current || !selectedTopic) return;
-    
-    const settings = data.settings || { fontSize: 12, fontFamily: "'Inter', sans-serif" };
+    try {
+      if (!editorRef.current || !selectedTopic) return;
+      
+      const settings = data.settings || { fontSize: 12, fontFamily: "'Inter', sans-serif" };
     const paperStyle = settings.paperStyle || 'none';
     const selectedPaper = PAPER_STYLES.find(s => s.id === paperStyle) || PAPER_STYLES[0];
 
@@ -752,7 +755,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
     `;
     
     const blob = new Blob(['\ufeff', header], {
-      type: 'application/msword'
+      type: 'application/vnd.ms-word;charset=utf-8'
     });
     
     const url = URL.createObjectURL(blob);
@@ -763,6 +766,10 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("MS Word Export failed:", e);
+      alert("Note export to MS Word failed. Please try again.");
+    }
   };
 
 
@@ -2337,6 +2344,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
       - Use clean, light borders (e.g., border-slate-200, border-stone-200) instead of thick dark backgrounds.
       - For columns and grids, use clear, distinct borders or light shadows for clean alignment.
       - Make sure to use 'w-full' and 'max-w-full' for all main structural wrappers and tables you generate, so they take up the entire width of the page. Do NOT use fixed widths or constraints like 'max-w-md', 'max-w-lg', or 'max-w-2xl'. Ensure the content is fluid and full width.
+      - CARD AND NUMBERED LIST LAYOUTS: To save horizontal space in columns, do NOT use a two-column flex-row style (e.g., 'flex items-start gap-4') for card numbers/circles. Instead, use a floated inline layout where the circular number/badge has 'float: left; margin-right: 12px; margin-bottom: 6px;' (or class="float-left mr-3 mb-1.5"). This guarantees that lines of text flow seamlessly next to and wrap UNDERNEATH the circular number, using the full width of the card.
       Do NOT wrap in markdown code blocks like \`\`\`html, just output raw HTML directly.`;
       newTopicTitle = `🎯 Study Plan: ${selectedTopic.title}`;
     } else {
@@ -2441,6 +2449,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
       - Use clean, light borders (e.g., border-slate-200, border-stone-200) instead of thick dark backgrounds.
       - For columns and grids, use clear, distinct borders or light shadows for clean alignment.
       - IMPORTANT: Use 'w-full' or 'max-w-full' for all structural wrappers, tables, and block container elements. The content must span the entire full width of the view. Do NOT use fixed width classes like 'max-w-md', 'max-w-xl', 'max-w-2xl' or centered fixed wrappers like 'mx-auto'. Make the layout fluid and full-width.
+      - CARD AND NUMBERED LIST LAYOUTS: To save horizontal space in columns, do NOT use a two-column flex-row style (e.g., 'flex items-start gap-4') for card numbers/circles. Instead, use a floated inline layout where the circular number/badge has 'float: left; margin-right: 12px; margin-bottom: 6px;' (or class="float-left mr-3 mb-1.5"). This guarantees that lines of text flow seamlessly next to and wrap UNDERNEATH the circular number, using the full width of the card.
       Do NOT wrap in markdown code blocks like \`\`\`html, just output raw, polished HTML directly.`;
 
       const result = await callNeuralEngine(
@@ -2650,18 +2659,6 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
                       className={`flex-1 text-2xl md:text-4xl font-black ${forceLightBg ? 'text-slate-900 border-slate-300' : 'text-slate-100 border-emerald-500/20'} bg-transparent outline-none p-2 border-b-2 focus:border-emerald-500 transition-all font-sans min-w-0 text-center`}
                       placeholder="Topic Title..."
                   />
-                  <button
-                    onClick={() => setForceLightBg(!forceLightBg)}
-                    className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-[10px] font-black uppercase transition-all shadow-sm shrink-0 border cursor-pointer ${
-                      forceLightBg 
-                        ? 'bg-emerald-500 border-emerald-600 text-white hover:bg-emerald-600 shadow-md shadow-emerald-500/20' 
-                        : 'bg-white/10 border-white/20 text-slate-300 hover:bg-white/20'
-                    }`}
-                    title={forceLightBg ? "Switch back to default/glass background design" : "Switch to high-contrast plain light background (perfect for reading plans)"}
-                  >
-                    <GraduationCap size={14} />
-                    <span>{forceLightBg ? "Plain Light: ON" : "Plain Light: OFF"}</span>
-                  </button>
                   <button
                     onClick={() => setIsToolbarHidden(!isToolbarHidden)}
                     className={`p-2 shrink-0 ${isToolbarHidden ? 'bg-emerald-100 text-emerald-600 hover:bg-emerald-200' : 'bg-white/50 text-slate-500 hover:bg-white'} rounded-xl transition-all shadow-sm`}
@@ -2907,6 +2904,19 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
                         <span className="hidden sm:inline">Share</span>
                       </button>
                     )}
+
+                    <button
+                      onClick={() => setForceLightBg(!forceLightBg)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-xs font-bold shadow-sm transition-all font-sans shrink-0 cursor-pointer ${
+                        forceLightBg 
+                          ? 'bg-emerald-500 border-emerald-600 text-white hover:bg-emerald-600 shadow-md shadow-emerald-500/20' 
+                          : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
+                      }`}
+                      title={forceLightBg ? "Switch back to default/glass background design" : "Switch to plain high-contrast light background"}
+                    >
+                      <GraduationCap size={14} />
+                      <span>Plain Light: {forceLightBg ? "ON" : "OFF"}</span>
+                    </button>
 
                         <div className="relative z-[200]">
                           <button 
@@ -3594,6 +3604,23 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
                         .editor-content {
                           background-color: #fcfdfd !important;
                           background-image: none !important;
+                          color: #1e293b !important;
+                        }
+                        .editor-content [class*="bg-slate-"],
+                        .editor-content [class*="bg-zinc-"],
+                        .editor-content [class*="bg-stone-"],
+                        .editor-content [class*="bg-slate-900"],
+                        .editor-content [class*="dark:bg-"] {
+                          background-color: #f8fafc !important;
+                          border-color: #cbd5e1 !important;
+                          color: #1e293b !important;
+                        }
+                        .editor-content [class*="text-slate-"],
+                        .editor-content [class*="text-zinc-"],
+                        .editor-content [class*="text-stone-"] {
+                          color: #1e293b !important;
+                        }
+                        .editor-content h1, .editor-content h2, .editor-content h3, .editor-content h4, .editor-content h5, .editor-content h6, .editor-content p, .editor-content span, .editor-content div, .editor-content font {
                           color: #1e293b !important;
                         }
                       ` : ''}
