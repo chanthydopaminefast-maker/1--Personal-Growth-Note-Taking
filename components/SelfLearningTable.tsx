@@ -4098,24 +4098,24 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
                     }`}
                 ></div>
 
-                {/* Table bottom tool container hidden because row/column manage buttons are between Export and Insert Date */}
-
                 {isTableModalOpen && (
-                  <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
-                    <div className="bg-white rounded-[40px] w-full max-w-md p-8 shadow-2xl border border-slate-200 animate-in zoom-in duration-300">
-                      <div className="flex items-center gap-4 mb-8">
+                  <div className="fixed inset-0 z-[202] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+                    <div className="bg-white rounded-[40px] w-full max-w-md max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 animate-in zoom-in duration-300 overflow-hidden">
+                      {/* Pinned Header */}
+                      <div className="flex items-center gap-4 p-6 pb-4 border-b border-slate-100 shrink-0">
                         <div className="p-3 bg-emerald-100 text-emerald-600 rounded-2xl">
                            <Table size={24} strokeWidth={3} />
                         </div>
                         <div>
-                          <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase italic">Smart Learning Table</h2>
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Organize your learning modules</p>
+                          <h2 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight uppercase italic leading-tight">Smart Learning Table</h2>
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Organize your learning modules</p>
                         </div>
                       </div>
 
-                      <div className="space-y-6">
+                      {/* Scrollable Center Content */}
+                      <div className="flex-1 overflow-y-auto p-6 space-y-6">
                         <div>
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Subject/Topic Title</label>
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1 font-sans">Subject/Topic Title</label>
                           <input 
                             type="text" 
                             className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 font-bold text-slate-900 outline-none focus:border-emerald-500 transition-all font-sans"
@@ -4126,7 +4126,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
 
                         <div className="grid grid-cols-2 gap-4">
                           <div>
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Rows</label>
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1 font-sans">Rows</label>
                             <input 
                               type="number" 
                               className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 font-bold text-slate-900 outline-none focus:border-emerald-500"
@@ -4135,7 +4135,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
                             />
                           </div>
                           <div>
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Columns</label>
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1 font-sans">Columns</label>
                             <select 
                               className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 font-bold text-slate-900 outline-none focus:border-emerald-500"
                               value={tableConfig.cols}
@@ -4146,7 +4146,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-4 py-2">
+                        <div className="flex items-center gap-4 py-1">
                            <input 
                              type="checkbox" 
                              id="hasHeaderSl" 
@@ -4158,13 +4158,14 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
                         </div>
 
                         <div>
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Theme Color</label>
-                          <div className="flex gap-2 mb-4">
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 font-sans">Theme Color</label>
+                          <div className="flex flex-wrap gap-2">
                              {['#f97316', '#ef4444', '#10b981', '#3b82f6', '#8b5cf6', '#ffffff', '#64748b', '#f43f5e', '#d946ef', '#14b8a6', '#0ea5e9', '#84cc16', '#eab308', '#ec4899'].map(c => (
                                <button 
+                                 type="button"
                                  key={c}
                                  onClick={() => setTableConfig({...tableConfig, theme: c})}
-                                 className={`w-8 h-8 rounded-full border-2 transition-all ${tableConfig.theme === c ? 'border-emerald-500 scale-125' : 'border-white'}`}
+                                 className={`w-7 h-7 rounded-full border transition-all ${tableConfig.theme === c ? 'border-emerald-500 scale-110 shadow-sm ring-2 ring-emerald-500/20' : 'border-slate-200 hover:scale-105'}`}
                                  style={{ backgroundColor: c }}
                                />
                              ))}
@@ -4172,13 +4173,14 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
                         </div>
 
                         <div>
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Table & Grid Lines Visibility/Opacity</label>
-                          <div className="flex gap-2">
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 font-sans">Table & Grid Lines Visibility/Opacity</label>
+                          <div className="flex gap-1.5">
                              {[10, 25, 50, 75, 100].map(percentage => (
                                <button 
+                                 type="button"
                                  key={percentage}
                                  onClick={() => setTableConfig({...tableConfig, gridOpacity: percentage})}
-                                 className={`flex-1 py-2 rounded-xl border font-black text-[11px] uppercase tracking-wider transition-all ${tableConfig.gridOpacity === percentage ? 'bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-500/15' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'}`}
+                                 className={`flex-1 py-2 rounded-xl border font-black text-[10px] uppercase tracking-wider transition-all ${tableConfig.gridOpacity === percentage ? 'bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-500/15' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'}`}
                                >
                                  {percentage}%
                                </button>
@@ -4187,28 +4189,28 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
                         </div>
 
                         <div>
-                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 mt-4">Grid Line Style</label>
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 font-sans">Grid Line Style</label>
                           <div className="grid grid-cols-2 gap-2">
                             {[
-                              { id: 'theme-solid', name: 'Whole Color', desc: 'Theme colors the whole table borders' },
-                              { id: 'theme-open', name: 'Color + Blank Line', desc: 'Theme borders with open sides' },
-                              { id: 'black-solid', name: 'Always Black', desc: 'Clear black borders for easy visibility' },
-                              { id: 'black-open', name: 'Black + Blank Line', desc: 'Clear black borders with open sides' }
+                              { id: 'theme-solid', name: 'Whole Color', desc: 'Theme colors borders' },
+                              { id: 'theme-open', name: 'Color + Blank', desc: 'Borders with open sides' },
+                              { id: 'black-solid', name: 'Always Black', desc: 'Clear black borders' },
+                              { id: 'black-open', name: 'Black + Blank', desc: 'Black with open sides' }
                             ].map(style => (
                               <button 
                                 key={style.id}
                                 type="button"
                                 onClick={() => setTableConfig({...tableConfig, gridStyle: style.id})}
-                                className={`p-3 rounded-2xl border text-left transition-all ${
+                                className={`p-2.5 rounded-xl border text-left transition-all ${
                                   (tableConfig.gridStyle || 'theme-solid') === style.id 
-                                    ? 'bg-emerald-500/10 border-emerald-500 text-slate-800' 
+                                    ? 'bg-emerald-50/10 border-emerald-550 text-slate-800 font-extrabold' 
                                     : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
                                 }`}
                               >
-                                <div className="text-[11px] font-black uppercase tracking-wide">
+                                <div className="text-[10px] font-black uppercase tracking-wide">
                                   {style.name}
                                 </div>
-                                <div className="text-[9px] font-bold text-slate-400 mt-0.5">
+                                <div className="text-[8px] font-bold text-slate-400 mt-0.5 leading-tight">
                                   {style.desc}
                                 </div>
                               </button>
@@ -4217,16 +4219,17 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
                         </div>
                       </div>
 
-                      <div className="flex gap-3 mt-10">
+                      {/* Pinned Footer */}
+                      <div className="border-t border-slate-100 p-6 flex gap-3 shrink-0 col-span-2">
                         <button 
                           onClick={() => setIsTableModalOpen(false)}
-                          className="flex-1 py-4 text-slate-500 font-black uppercase text-[10px] tracking-widest hover:bg-slate-50 rounded-2xl transition-all"
+                          className="flex-1 py-3.5 text-slate-500 font-black uppercase text-[10px] tracking-widest hover:bg-slate-50 rounded-2xl transition-all"
                         >
                           Cancel
                         </button>
                         <button 
                           onClick={insertSmartTable}
-                          className="flex-1 py-4 bg-emerald-500 text-white font-black uppercase text-[10px] tracking-widest rounded-2xl shadow-xl shadow-emerald-500/20 hover:bg-emerald-600 active:scale-95 transition-all"
+                          className="flex-1 py-3.5 bg-emerald-500 text-white font-black uppercase text-[10px] tracking-widest rounded-2xl shadow-xl shadow-emerald-500/20 hover:bg-emerald-600 active:scale-95 transition-all"
                         >
                           Generate Table
                         </button>
