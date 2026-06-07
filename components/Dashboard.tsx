@@ -603,7 +603,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data }) => {
              <button
                 id="export-executive-summary-btn"
                 onClick={exportExecutiveSummary}
-                className="bg-indigo-600 hover:bg-indigo-500 text-white font-black text-[10px] uppercase tracking-widest px-6 py-4 rounded-3xl shadow-lg border border-indigo-500 flex items-center gap-2 hover:scale-105 active:scale-95 transition-all shadow-indigo-500/25"
+                className="bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[10px] uppercase tracking-widest px-6 py-4 rounded-3xl shadow-lg border border-emerald-500 flex items-center gap-2 hover:scale-105 active:scale-95 transition-all shadow-emerald-500/25"
              >
                 <Download size={14} strokeWidth={3} />
                 <span>Executive Summary PDF</span>
@@ -611,7 +611,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data }) => {
              <button
                 id="export-progress-stats-btn"
                 onClick={exportToCSV}
-                className="bg-slate-900 hover:bg-slate-800 text-white font-black text-[10px] uppercase tracking-widest px-6 py-4 rounded-3xl shadow-sm border border-slate-800 flex items-center gap-2 hover:scale-105 active:scale-95 transition-all"
+                className="bg-amber-600 hover:bg-amber-500 text-white font-black text-[10px] uppercase tracking-widest px-6 py-4 rounded-3xl shadow-lg border border-amber-500 flex items-center gap-2 hover:scale-105 active:scale-95 transition-all shadow-amber-500/25"
              >
                 <Download size={14} strokeWidth={3} />
                 <span>Export CSV Stats</span>

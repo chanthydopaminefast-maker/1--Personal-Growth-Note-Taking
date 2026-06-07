@@ -30,6 +30,11 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showExportStyleModal, setShowExportStyleModal] = useState(false);
   const [selectedExportStyle, setSelectedExportStyle] = useState<'executive' | 'handwritten' | 'minimalist' | 'academic' | 'retro'>('executive');
+  const [pdfCustomHeader, setPdfCustomHeader] = useState('');
+  const [pdfCustomFooter, setPdfCustomFooter] = useState('');
+  const [keepRowsTogether, setKeepRowsTogether] = useState(true);
+  const [pdfMargin, setPdfMargin] = useState(0.5);
+  const [pdfPaperStyle, setPdfPaperStyle] = useState('none');
   const [showTableToolsMenu, setShowTableToolsMenu] = useState(false);
   const [isToolbarHidden, setIsToolbarHidden] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(window.innerWidth < 768 ? 200 : 300);
@@ -66,8 +71,78 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
 
     // Settings
     const settings = data.settings || { fontSize: 12, fontFamily: "'Inter', sans-serif" };
-    const paperStyle = settings.paperStyle || 'none';
-    const selectedPaper = PAPER_STYLES.find(s => s.id === paperStyle) || PAPER_STYLES[0];
+    const paperStyleToUse = pdfPaperStyle !== 'none' ? pdfPaperStyle : (settings.paperStyle || 'none');
+    const selectedPaper = PAPER_STYLES.find(s => s.id === paperStyleToUse) || PAPER_STYLES[0];
+
+    // CSS background generator for paper styling
+    let paperBackgroundCss = '';
+    if (paperStyleToUse === 'ruled') {
+      paperBackgroundCss = `
+        #pdf-export-body, #pdf-export-container {
+          background-color: #ffffff !important;
+          background-image: linear-gradient(#e2e8f0 1.5px, transparent 1.5px) !important;
+          background-size: 100% 2.25rem !important;
+        }
+      `;
+    } else if (paperStyleToUse === 'grid') {
+      paperBackgroundCss = `
+        #pdf-export-body, #pdf-export-container {
+          background-color: #ffffff !important;
+          background-image: 
+            linear-gradient(#f1f5f9 1px, transparent 1px) !important,
+            linear-gradient(90deg, #f1f5f9 1px, transparent 1px) !important;
+          background-size: 1.5rem 1.5rem !important;
+        }
+      `;
+    } else if (paperStyleToUse === 'dots') {
+      paperBackgroundCss = `
+        #pdf-export-body, #pdf-export-container {
+          background-color: #ffffff !important;
+          background-image: radial-gradient(#cbd5e1 2px, transparent 2px) !important;
+          background-size: 1.5rem 1.5rem !important;
+        }
+      `;
+    } else if (paperStyleToUse === 'stars') {
+      paperBackgroundCss = `
+        #pdf-export-body, #pdf-export-container {
+          background-color: #f5f3ff !important;
+          background-image: 
+            radial-gradient(rgba(99, 102, 241, 0.15) 1.5px, transparent 1.5px) !important,
+            radial-gradient(rgba(139, 92, 246, 0.1) 2px, transparent 2px) !important;
+          background-size: 2rem 2rem, 3.5rem 3.5rem !important;
+        }
+      `;
+    } else if (paperStyleToUse === 'engineering') {
+      paperBackgroundCss = `
+        #pdf-export-body, #pdf-export-container {
+          background-color: #f0f9ff !important;
+          background-image: 
+            linear-gradient(rgba(14, 165, 233, 0.1) 1px, transparent 1px) !important,
+            linear-gradient(90deg, rgba(14, 165, 233, 0.1) 1px, transparent 1px) !important;
+          background-size: 1rem 1rem !important;
+        }
+      `;
+    } else if (paperStyleToUse === 'isometric') {
+      paperBackgroundCss = `
+        #pdf-export-body, #pdf-export-container {
+          background-color: #ffffff !important;
+          background-image: 
+            linear-gradient(30deg, #f1f5f9 12%, transparent 12.5%, transparent 87%, #f1f5f9 87.5%, #f1f5f9),
+            linear-gradient(150deg, #f1f5f9 12%, transparent 12.5%, transparent 87%, #f1f5f9 87.5%, #f1f5f9),
+            linear-gradient(30deg, #f1f5f9 12%, transparent 12.5%, transparent 87%, #f1f5f9 87.5%, #f1f5f9),
+            linear-gradient(150deg, #f1f5f9 12%, transparent 12.5%, transparent 87%, #f1f5f9 87.5%, #f1f5f9),
+            linear-gradient(60deg, #e2e8f0 25%, transparent 25.5%, transparent 75%, #e2e8f0 75%, #e2e8f0),
+            linear-gradient(60deg, #e2e8f0 25%, transparent 25.5%, transparent 75%, #e2e8f0 75%, #e2e8f0) !important;
+          background-size: 40px 70px !important;
+        }
+      `;
+    } else if (paperStyleToUse === 'none') {
+      paperBackgroundCss = `
+        #pdf-export-body, #pdf-export-container {
+          background-image: none !important;
+        }
+      `;
+    }
 
     // Theme values based on style
     let bgColor = '#ffffff';
@@ -220,28 +295,28 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       `;
     } else {
       // Classic Executive (Default)
-      const isDark = selectedPaper.id === 'stars' || selectedPaper.id === 'none-dark' || selectedPaper.id === 'none';
-      bgColor = isDark ? '#0f172a' : '#ffffff';
-      textColor = isDark ? '#f8fafc' : '#1e293b';
+      const isDark = false;
+      bgColor = '#ffffff';
+      textColor = '#1e293b';
       accentColor = '#0284c7';
       fontFamilyRule = "'Inter', 'Segoe UI', Arial, sans-serif";
 
       customHeaderHtml = `
         <div style="margin-bottom: 12px; border-bottom: 2px solid ${accentColor}; padding-bottom: 8px;">
-          <h1 style="font-size: 18pt; font-weight: 900; color: ${isDark ? '#38bdf8' : '#0f172a'}; margin: 0; line-height: 1.2;">${activeTopic.title}</h1>
-          <p style="font-size: 8.5pt; color: ${isDark ? '#94a3b8' : '#64748b'}; margin-top: 4px; text-transform: uppercase; letter-spacing: 2px; font-weight: 700; margin-bottom: 0;">Strategic Notes Export • ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+          <h1 style="font-size: 18pt; font-weight: 900; color: #0f172a; margin: 0; line-height: 1.2;">${activeTopic.title}</h1>
+          <p style="font-size: 8.5pt; color: #64748b; margin-top: 4px; text-transform: uppercase; letter-spacing: 2px; font-weight: 700; margin-bottom: 0;">Strategic Notes Export • ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
         </div>
       `;
 
       customContentStyles = `
-        .note-content h1, .note-content h2 { font-size: 14pt; font-weight: 900; margin-top: 14pt; margin-bottom: 6pt; color: ${isDark ? '#38bdf8' : '#0369a1'}; }
-        .note-content h3 { font-size: 12pt; font-weight: 800; margin-top: 10pt; margin-bottom: 5pt; color: ${isDark ? '#e2e8f0' : '#1e293b'}; }
+        .note-content h1, .note-content h2 { font-size: 14pt; font-weight: 900; margin-top: 14pt; margin-bottom: 6pt; color: #0369a1; }
+        .note-content h3 { font-size: 12pt; font-weight: 800; margin-top: 10pt; margin-bottom: 5pt; color: #1e293b; }
         .note-content p { margin-bottom: 6pt; }
-        .paper-dots, .paper-grid, .paper-ruled, .paper-engineering { background-image: none !important; background-color: ${isDark ? '#1e293b' : '#f8fafc'} !important; border: 1px solid ${isDark ? '#334155' : '#e2e8f0'} !important; border-radius: 10px !important; padding: 12px !important; }
-        .synthesis-card-wrapper, .qa-board-wrapper { border: 1.5px solid ${isDark ? '#334155' : '#e2e8f0'} !important; border-radius: 12px !important; padding: 12px 14px !important; margin: 8px 0 !important; background-color: ${isDark ? '#1e293b' : '#f8fafc'} !important; color: ${textColor} !important; }
+        .paper-dots, .paper-grid, .paper-ruled, .paper-engineering { background-image: none !important; background-color: #f8fafc !important; border: 1px solid #e2e8f0 !important; border-radius: 10px !important; padding: 12px !important; }
+        .synthesis-card-wrapper, .qa-board-wrapper { border: 1.5px solid #e2e8f0 !important; border-radius: 12px !important; padding: 12px 14px !important; margin: 8px 0 !important; background-color: #f8fafc !important; color: #1e293b !important; }
         table { width: 100% !important; border-collapse: collapse; margin: 12px 0; }
-        th, td { border: 1px solid ${isDark ? '#334155' : '#e2e8f0'}; padding: 8px; }
-        th { background-color: ${isDark ? '#1e293b' : '#f8fafc'}; font-weight: bold; color: ${isDark ? '#ffffff' : '#000000'}; }
+        th, td { border: 1px solid #e2e8f0; padding: 8px; }
+        th { background-color: #f8fafc; font-weight: bold; color: #000000; }
       `;
     }
 
@@ -281,17 +356,57 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
           break-after: avoid;
         }
         
-        /* Prevent slicing lines of text and elements horizontally during page break (allow tables and cards to break across pages) */
+        /* Prevent slicing lines of text and elements horizontally during page break */
         p, li, blockquote, pre,
         h1, h2, h3, h4, h5, h6,
         .note-content > p {
           page-break-inside: avoid !important;
           break-inside: avoid !important;
         }
-        tr, th, td, table, .synthesis-card-wrapper, .qa-board-wrapper {
-          page-break-inside: auto !important;
-          break-inside: auto !important;
+        
+        .synthesis-card-wrapper, .qa-board-wrapper, blockquote {
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
         }
+
+        tr, th, td, table {
+          page-break-inside: ${keepRowsTogether ? 'avoid' : 'auto'} !important;
+          break-inside: ${keepRowsTogether ? 'avoid' : 'auto'} !important;
+        }
+
+        /* Ensure overflow is visible so words are never clipped or horizontally sliced */
+        table, tr, td, th, .table-scroll-container, .synthesis-card-wrapper, .qa-board-wrapper, blockquote, p, pre, div, span {
+          overflow: visible !important;
+          box-shadow: none !important;
+        }
+
+        ${paperBackgroundCss}
+
+        /* Force readable light backgrounds and dark texts for all light themes during export */
+        ${styleToUse !== 'retro' ? `
+          #pdf-export-body, #pdf-export-container, .note-content, .export-content {
+            background-color: ${bgColor} !important;
+            background: ${bgColor} !important;
+            color: ${textColor} !important;
+          }
+          .synthesis-card-wrapper, .qa-board-wrapper, blockquote, pre {
+            background-color: #f8fafc !important;
+            background: #f8fafc !important;
+            color: #1e293b !important;
+            border-color: #cbd5e1 !important;
+          }
+          .synthesis-card-wrapper *, .qa-board-wrapper *, blockquote *, pre * {
+            color: #1e293b !important;
+          }
+          .synthesis-card-wrapper div[style*="background-color: #ffffff"], 
+          .synthesis-card-wrapper div[style*="background-color: rgb(255, 255, 255)"],
+          .qa-board-wrapper div[style*="background-color: #ffffff"],
+          .qa-board-wrapper div[style*="background-color: rgb(255, 255, 255)"] {
+            background-color: #ffffff !important;
+            background: #ffffff !important;
+            color: #1e293b !important;
+          }
+        ` : ''}
 
         .flex { display: flex !important; }
         .grid { display: grid !important; }
@@ -325,8 +440,9 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       </style>
     `;
 
+    const marginMm = pdfMargin * 25.4;
     const opt = {
-      margin:       [8, 8, 8, 8] as [number, number, number, number], // Thin elegant margins to maximize content space per page
+      margin:       [marginMm, marginMm, marginMm, marginMm] as [number, number, number, number],
       filename:     `${activeTopic.title || 'Notes'}.pdf`,
       image:        { type: 'jpeg' as const, quality: 0.98 },
       html2canvas:  { 
@@ -339,7 +455,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
         backgroundColor: bgColor
       },
       jsPDF:        { unit: 'mm' as const, format: 'a4' as const, orientation: 'landscape' as const },
-      pagebreak:    { mode: ['css', 'legacy'] }
+      pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
     };
 
     // Show full-screen loading spinner/overlay to hide the print generation process
@@ -376,10 +492,16 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     const originalScrollX = window.scrollX || window.pageXOffset || 0;
     window.scrollTo(0, 0);
 
+    // Disable dark mode temporarily so elements are laid out in pristine light mode forms
+    const isDarkActive = document.documentElement.classList.contains('dark');
+    if (isDarkActive && styleToUse !== 'retro') {
+      document.documentElement.classList.remove('dark');
+    }
+
     document.body.appendChild(exportContainer);
 
     // Give browser brief window to layout and paint the added container
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise(resolve => setTimeout(resolve, 150));
 
     // To prevent html2canvas from crash-looping or hanging on modern CSS stylesheet rules (e.g. Tailwind v4 variables, container queries),
     // we temporarily disable all external stylesheets during PDF rendering. High-z-index dark overlay hides any content flicker.
@@ -398,11 +520,40 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     }
 
     try {
-      await html2pdf().set(opt).from(exportContainer).save();
+      const pdfWorker = html2pdf().set(opt).from(exportContainer).toPdf();
+      
+      await pdfWorker.get('pdf').then((pdf) => {
+        const totalPages = pdf.internal.getNumberOfPages();
+        for (let i = 1; i <= totalPages; i++) {
+          pdf.setPage(i);
+          
+          pdf.setFontSize(8.5);
+          pdf.setTextColor(115, 115, 115); // Neutral medium gray
+          
+          const pageWidth = pdf.internal.pageSize.getWidth();
+          const pageHeight = pdf.internal.pageSize.getHeight();
+          
+          if (pdfCustomHeader && pdfCustomHeader.trim() !== '') {
+            pdf.text(pdfCustomHeader.trim(), 8, 6);
+          }
+          
+          if (pdfCustomFooter && pdfCustomFooter.trim() !== '') {
+            pdf.text(pdfCustomFooter.trim(), 8, pageHeight - 4);
+          }
+          
+          const pageText = `Page ${i} of ${totalPages}`;
+          const pageTextWidth = pdf.getTextWidth(pageText);
+          pdf.text(pageText, pageWidth - 8 - pageTextWidth, pageHeight - 4);
+        }
+      }).save();
     } catch (e) {
       console.error(e);
       alert('Export failed.');
     } finally {
+      // Re-enable dark mode if it was temporarily disabled
+      if (isDarkActive && styleToUse !== 'retro') {
+        document.documentElement.classList.add('dark');
+      }
       // Restore all disabled sheets
       disabledSheets.forEach((sheet) => {
         try {
@@ -3475,7 +3626,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
 
       {showExportStyleModal && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md flex items-center justify-center p-4 z-[99999] animate-fade-in font-sans">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-[24px] max-w-2xl w-full shadow-2xl space-y-6">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-[24px] max-w-4xl w-full shadow-2xl space-y-6">
             <div className="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-slate-800">
               <div>
                 <h3 className="text-sm font-black tracking-wider uppercase text-slate-800 dark:text-slate-100 flex items-center gap-2">
@@ -3647,6 +3798,91 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                       </div>
                     </div>
                   )}
+                </div>
+
+                <div className="my-4 space-y-3.5 p-4 bg-white/70 dark:bg-slate-950/70 rounded-2xl border border-slate-100 dark:border-slate-800/80 shadow-sm z-10">
+                  <div className="text-[10px] uppercase tracking-widest font-black text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+                    ⚙️ PDF Advanced Settings
+                  </div>
+                  
+                  {/* Paper Pattern dropdown */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block">Paper Grid Pattern Style</label>
+                    <select
+                      value={pdfPaperStyle}
+                      onChange={(e) => setPdfPaperStyle(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 text-xs text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-orange-500/20 cursor-pointer"
+                    >
+                      <option value="none">Clean White (No Pattern)</option>
+                      <option value="ruled">Classic Ruled Pattern</option>
+                      <option value="grid">Math Grid Pattern</option>
+                      <option value="dots">Bullet Dot Pattern</option>
+                      <option value="stars">Stardust Cosmic Pattern</option>
+                      <option value="engineering">Engineering Grid Pattern</option>
+                      <option value="isometric">3D Isometric Grid Pattern</option>
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Custom Header Input */}
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block">Custom Page Header</label>
+                      <input
+                        type="text"
+                        value={pdfCustomHeader}
+                        onChange={(e) => setPdfCustomHeader(e.target.value)}
+                        placeholder="e.g. DPSSTable Confidential..."
+                        className="w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 text-xs text-slate-700 dark:text-slate-300 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                      />
+                    </div>
+
+                    {/* Custom Footer Input */}
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block">Custom Page Footer</label>
+                      <input
+                        type="text"
+                        value={pdfCustomFooter}
+                        onChange={(e) => setPdfCustomFooter(e.target.value)}
+                        placeholder="e.g. Proprietary study record..."
+                        className="w-full px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 text-xs text-slate-700 dark:text-slate-300 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Margin setting slider */}
+                  <div className="flex flex-col gap-1.5 pt-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-black uppercase text-slate-700 dark:text-slate-300">Page Margin (Inches)</label>
+                      <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400">{pdfMargin.toFixed(1)}"</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.1"
+                      max="2.5"
+                      step="0.1"
+                      value={pdfMargin}
+                      onChange={(e) => setPdfMargin(parseFloat(e.target.value))}
+                      className="w-full accent-orange-500 h-1.5 bg-slate-200 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer"
+                    />
+                    <div className="flex justify-between text-[8px] text-slate-400 font-bold px-0.5">
+                      <span>0.1"</span>
+                      <span>2.5"</span>
+                    </div>
+                  </div>
+
+                  {/* Keep rows together switch */}
+                  <div className="flex items-center justify-between pt-1">
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-black uppercase text-slate-700 dark:text-slate-300">Keep Rows Together</span>
+                      <span className="text-[8px] text-slate-500 dark:text-slate-400 leading-normal">Force page breaks to prevent row clipping</span>
+                    </div>
+                    <button
+                      onClick={() => setKeepRowsTogether(!keepRowsTogether)}
+                      className={`h-5 w-10 rounded-full transition-colors relative focus:outline-none cursor-pointer ${keepRowsTogether ? 'bg-orange-500' : 'bg-slate-200 dark:bg-slate-800'}`}
+                    >
+                      <span className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${keepRowsTogether ? 'translate-x-5' : 'translate-x-0'}`} />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3 z-10 bg-transparent">
