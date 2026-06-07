@@ -70,7 +70,20 @@ export const HabitTracker: React.FC<HabitTrackerProps> = ({ data, onUpdate, onUp
   const [milestoneCelebration, setMilestoneCelebration] = useState<{ habitName: string; color: string; streak: number } | null>(null);
 
   const [isDisciplinesFrozen, setIsDisciplinesFrozen] = useState(true);
-  const [disciplinesWidth, setDisciplinesWidth] = useState(380);
+  const [disciplinesWidth, setDisciplinesWidth] = useState(() => {
+    const saved = localStorage.getItem('gportal_discipline_sidebar_width');
+    if (saved) {
+      const parsed = parseInt(saved, 10);
+      if (!isNaN(parsed) && parsed >= 160 && parsed <= 600) {
+        return parsed;
+      }
+    }
+    return 380;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('gportal_discipline_sidebar_width', disciplinesWidth.toString());
+  }, [disciplinesWidth]);
   const [isResizing, setIsResizing] = useState(false);
 
   const startResizeX = React.useRef(0);

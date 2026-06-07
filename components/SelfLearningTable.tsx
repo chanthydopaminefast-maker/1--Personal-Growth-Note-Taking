@@ -46,7 +46,20 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
     return localStorage.getItem('self_learning_sidebar_open') !== 'false';
   });
-  const [sidebarWidth, setSidebarWidth] = useState(window.innerWidth < 768 ? 200 : 300);
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const saved = localStorage.getItem('gportal_selflearning_sidebar_width');
+    if (saved) {
+      const parsed = parseInt(saved, 10);
+      if (!isNaN(parsed) && parsed >= 160 && parsed <= 600) {
+        return parsed;
+      }
+    }
+    return window.innerWidth < 768 ? 200 : 300;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('gportal_selflearning_sidebar_width', sidebarWidth.toString());
+  }, [sidebarWidth]);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedTopics, setExpandedTopics] = useState<Record<string, boolean>>({});
