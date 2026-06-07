@@ -28,6 +28,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
   const [showMoreTools, setShowMoreTools] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [showExportStyleModal, setShowExportStyleModal] = useState(false);
+  const [selectedExportStyle, setSelectedExportStyle] = useState<'executive' | 'handwritten' | 'minimalist' | 'academic' | 'retro'>('executive');
   const [showTableToolsMenu, setShowTableToolsMenu] = useState(false);
   const [isToolbarHidden, setIsToolbarHidden] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(window.innerWidth < 768 ? 200 : 300);
@@ -46,7 +48,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
   const editorRef = useRef<HTMLDivElement>(null);
   const savedRange = useRef<Range | null>(null);
 
-  const exportPDF = async () => {
+  const exportPDF = async (customStyle?: 'executive' | 'handwritten' | 'minimalist' | 'academic' | 'retro') => {
     if (!editorRef.current) return;
     const findTopicLocal = (items: DPSSTopic[], id: string): DPSSTopic | null => {
       for (const item of items) {
@@ -60,17 +62,192 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     };
     const activeTopic = (selectedTopicId ? findTopicLocal(data?.dpssTopics || [], selectedTopicId) : null) || { title: 'Notes' };
     
+    const styleToUse = customStyle || selectedExportStyle || 'executive';
+
+    // Settings
     const settings = data.settings || { fontSize: 12, fontFamily: "'Inter', sans-serif" };
     const paperStyle = settings.paperStyle || 'none';
     const selectedPaper = PAPER_STYLES.find(s => s.id === paperStyle) || PAPER_STYLES[0];
 
-    const isDark = selectedPaper.id === 'stars' || selectedPaper.id === 'none-dark' || selectedPaper.id === 'none';
-    const bgColor = isDark ? '#0f172a' : '#ffffff';
-    const textColor = isDark ? '#f8fafc' : '#1e293b';
-    const accentColor = '#0284c7';
+    // Theme values based on style
+    let bgColor = '#ffffff';
+    let textColor = '#2c3e50';
+    let primaryColor = '#1f3a52';
+    let accentColor = '#3b82f6';
+    let headerBorder = `3px solid ${accentColor}`;
+    let fontImports = '';
+    let fontFamilyRule = "'Inter', 'Segoe UI', Arial, sans-serif";
+    
+    let isDarkStyle = false;
+    let customHeaderHtml = '';
+    let customFooterHtml = '';
+    let customContentStyles = '';
+
+    if (styleToUse === 'handwritten') {
+      bgColor = '#fffdf5'; // ivory paper
+      textColor = '#4a2c11'; // brownish text
+      primaryColor = '#a16207'; // deep warm amber h1
+      accentColor = '#f59e0b';
+      headerBorder = '2px dashed #b45309';
+      fontImports = `@import url('https://fonts.googleapis.com/css2?family=Architects+Daughter&display=swap');`;
+      fontFamilyRule = "'Architects Daughter', cursive, sans-serif";
+      
+      customHeaderHtml = `
+        <div style="margin-bottom: 25px; border-bottom: ${headerBorder}; padding-bottom: 12px; text-align: center; font-family: ${fontFamilyRule};">
+          <div style="font-size: 13pt; color: ${primaryColor}; font-weight: bold; letter-spacing: 1px; margin-bottom: 4px;">✍️ HANDWRITTEN LOG JOURNAL</div>
+          <h1 style="font-size: 26pt; font-weight: normal; color: ${primaryColor}; margin: 5px 0;">${activeTopic.title}</h1>
+          <p style="font-size: 10pt; color: #7c2d12; margin-top: 5px; font-style: italic;">Scribbled on ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+        </div>
+      `;
+
+      customContentStyles = `
+        .note-content { font-family: ${fontFamilyRule} !important; font-size: 13.5pt !important; line-height: 1.8 !important; }
+        .note-content h1, .note-content h2, .note-content h3 { font-family: ${fontFamilyRule} !important; color: ${primaryColor} !important; font-weight: normal !important; text-transform: none !important; }
+        .note-content h1, .note-content h2 { font-size: 20pt !important; border-bottom: 1px dashed #d97706 !important; padding-bottom: 5px !important; }
+        .note-content h3 { font-size: 16pt !important; }
+        .note-content p { margin-bottom: 14pt !important; }
+        .note-content table { border: 2px solid #b45309 !important; border-radius: 4px !important; }
+        .note-content th, .note-content td { border: 1px dashed #b45309 !important; font-family: ${fontFamilyRule} !important; color: ${textColor} !important; padding: 8px !important; }
+        .note-content th { background-color: #fef3c7 !important; color: #78350f !important; }
+        /* Add a faint lined notebook design to the whole page */
+        #pdf-export-body {
+          background-image: linear-gradient(#fcd34d 1px, transparent 1px) !important;
+          background-size: 100% 2.4em !important;
+        }
+      `;
+    } else if (styleToUse === 'minimalist') {
+      bgColor = '#fcfcfc'; // cool porcelain
+      textColor = '#1e293b'; 
+      primaryColor = '#0f172a';
+      accentColor = '#64748b';
+      headerBorder = '1px solid #e2e8f0';
+      fontImports = `@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Lora:ital,wght@0,400;1,400&display=swap');`;
+      fontFamilyRule = "'Lora', Georgia, 'Times New Roman', serif";
+
+      customHeaderHtml = `
+        <div style="margin-bottom: 45px; border-bottom: ${headerBorder}; padding-bottom: 30px; text-align: left; font-family: 'Playfair Display', serif;">
+          <p style="font-size: 8pt; color: #8e9cae; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 4px;">D O C U M E N T • S T U D Y</p>
+          <h1 style="font-size: 30pt; font-weight: 400; color: ${primaryColor}; margin: 0; font-style: italic; letter-spacing: -0.5px;">${activeTopic.title}</h1>
+          <p style="font-size: 9pt; color: #94a3b8; margin-top: 15px; font-weight: 300; letter-spacing: 1px;">GENESIS ARCHIVE • ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).toUpperCase()}</p>
+        </div>
+      `;
+
+      customContentStyles = `
+        .note-content { font-family: 'Lora', Georgia, serif !important; font-size: 11.5pt !important; line-height: 1.75 !important; letter-spacing: 0.2px !important; }
+        .note-content h1, .note-content h2, .note-content h3 { font-family: 'Playfair Display', serif !important; color: ${primaryColor} !important; font-weight: 700 !important; font-style: italic !important; }
+        .note-content h1, .note-content h2 { font-size: 18pt !important; border-bottom: none !important; margin-top: 30pt !important; margin-bottom: 10pt !important; }
+        .note-content h3 { font-size: 14pt !important; margin-top: 20pt !important; }
+        .note-content p { margin-bottom: 15pt !important; text-align: justify !important; }
+        .note-content table { border-collapse: separate !important; border-spacing: 0 !important; width: 100% !important; margin: 30px 0 !important; }
+        .note-content th, .note-content td { border: none !important; border-bottom: 1px solid #e2e8f0 !important; padding: 12px 10px !important; color: ${textColor} !important; font-family: 'Lora', serif !important; }
+        .note-content th { font-family: 'Playfair Display', serif !important; font-weight: bold !important; font-style: italic !important; background-color: transparent !important; border-bottom: 2px solid #0f172a !important; color: #0f172a !important; }
+        .synthesis-card-wrapper, .qa-board-wrapper { border: none !important; border-left: 2px solid #0f172a !important; border-radius: 0 !important; padding: 10px 0 10px 20px !important; background-color: transparent !important; margin: 25px 0 !important; }
+      `;
+    } else if (styleToUse === 'academic') {
+      bgColor = '#ffffff';
+      textColor = '#000000';
+      primaryColor = '#000000';
+      accentColor = '#000000';
+      headerBorder = '1px solid #000000';
+      fontImports = `@import url('https://fonts.googleapis.com/css2?family=Libertinus+Serif:ital,wght@0,400;0,700;1,400&display=swap');`;
+      fontFamilyRule = "'Times New Roman', Times, 'Libertinus Serif', serif";
+
+      customHeaderHtml = `
+        <div style="text-align: center; margin-bottom: 40px; font-family: ${fontFamilyRule}; padding-bottom: 15px; border-bottom: 4px double #000;">
+          <div style="font-size: 11pt; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px;">JOURNAL OF ADVANCED META-LEARNING AND HUMAN PERFORMANCE</div>
+          <div style="font-size: 9pt; font-style: italic; color: #555; margin-bottom: 15px;">Volume XI, Spec. Issue • Published ${new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</div>
+          <h1 style="font-size: 24pt; font-weight: bold; color: #000; margin: 10px 0; font-family: ${fontFamilyRule};">${activeTopic.title.toUpperCase()}</h1>
+          <div style="font-size: 10.5pt; margin-top: 10px; font-weight: bold; letter-spacing: 0.5px;">Strategic Master Portfolio & Research Dossier</div>
+        </div>
+      `;
+
+      customFooterHtml = `
+        <div style="margin-top: 40px; border-top: 1px solid #000000; padding-top: 10px; display: flex; justify-content: space-between; align-items: center; font-size: 8.5pt; color: #333333; font-family: ${fontFamilyRule};">
+          <div>PEAK PERFORMANCE LEARNING METHODOLOGY DOCUMENT</div>
+          <div style="font-weight: bold;">DOCUMENT WRAPPER REFERENCE • PAGE 1</div>
+          <div>CONFIDENTIAL RESEARCH ARCHIVE</div>
+        </div>
+      `;
+
+      customContentStyles = `
+        .note-content { font-family: ${fontFamilyRule} !important; font-size: 11pt !important; line-height: 1.6 !important; text-align: justify !important; }
+        .note-content h1, .note-content h2, .note-content h3 { font-family: ${fontFamilyRule} !important; color: #000000 !important; font-weight: bold !important; text-transform: uppercase !important; font-size: 13pt !important; margin-top: 25pt !important; margin-bottom: 8pt !important; letter-spacing: 0.5px !important; }
+        .note-content h1 { border-bottom: 1px solid #000000 !important; padding-bottom: 3px !important; }
+        .note-content p { margin-bottom: 12pt !important; text-indent: 24pt !important; }
+        .note-content p:first-of-type { text-indent: 0 !important; }
+        .note-content table { border: 1px solid #000000 !important; margin: 25px 0 !important; }
+        .note-content th, .note-content td { border: 1px solid #000000 !important; padding: 10px !important; font-family: ${fontFamilyRule} !important; color: #000000 !important; }
+        .note-content th { background-color: #f2f2f2 !important; text-transform: uppercase !important; font-weight: bold !important; font-size: 9.5pt !important; }
+        .synthesis-card-wrapper, .qa-board-wrapper { border: 1px solid #000000 !important; border-radius: 0 !important; background-color: #fafafa !important; padding: 15px !important; margin: 20px 0 !important; }
+      `;
+    } else if (styleToUse === 'retro') {
+      isDarkStyle = true;
+      bgColor = '#030712'; // space black
+      textColor = '#10b981'; // vibrant cyperpunk green (phosphor)
+      primaryColor = '#34d399'; // light cyber-green
+      accentColor = '#059669';
+      headerBorder = '1px dashed #10b981';
+      fontImports = `@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;700&display=swap');`;
+      fontFamilyRule = "'Fira Code', monospace";
+
+      customHeaderHtml = `
+        <div style="margin-bottom: 35px; border: 1px solid ${textColor}; padding: 20px; font-family: ${fontFamilyRule}; background-color: #0b1329;">
+          <div style="display: flex; justify-content: space-between; font-size: 8pt; color: #64748b; margin-bottom: 10px; font-weight: bold;">
+            <span>[SYS.STATUS: COMPILING]</span>
+            <span>PORT_ADDR: 0x3A4F9</span>
+            <span>SECURE_LINK: YES</span>
+          </div>
+          <h1 style="font-size: 22pt; font-weight: bold; color: ${primaryColor}; margin: 5px 0; font-family: ${fontFamilyRule}; text-transform: uppercase; letter-spacing: -1px;">> ${activeTopic.title}</h1>
+          <div style="font-size: 9pt; color: #10b981; margin-top: 10px; border-top: 1px dashed #10b981; padding-top: 8px;">
+            STAMP_DATE: [${new Date().toISOString()}] // RECORDS_EXPORT_V1.C
+          </div>
+        </div>
+      `;
+
+      customContentStyles = `
+        .note-content { font-family: ${fontFamilyRule} !important; font-size: 10.5pt !important; line-height: 1.6 !important; }
+        .note-content h1, .note-content h2, .note-content h3 { font-family: ${fontFamilyRule} !important; color: ${primaryColor} !important; font-weight: bold !important; text-transform: uppercase !important; }
+        .note-content h1:before, .note-content h2:before { content: ":: " !important; }
+        .note-content h3:before { content: "> " !important; }
+        .note-content h1, .note-content h2 { font-size: 15pt !important; border-bottom: 1px dashed #10b981 !important; padding-bottom: 3px !important; margin-top: 25pt !important; }
+        .note-content h3 { font-size: 12pt !important; }
+        .note-content p { margin-bottom: 12pt !important; color: #a7f3d0 !important; }
+        .note-content table { border: 1px solid #10b981 !important; border-collapse: collapse !important; background-color: #090e1a !important; }
+        .note-content th, .note-content td { border: 1px solid #059669 !important; padding: 10px !important; font-family: ${fontFamilyRule} !important; color: #a7f3d0 !important; }
+        .note-content th { background-color: #0c2017 !important; color: #34d399 !important; font-weight: bold !important; text-transform: uppercase !important; }
+        .synthesis-card-wrapper, .qa-board-wrapper { border: 1px dashed #10b981 !important; border-radius: 4px !important; background-color: #04100c !important; color: #10b981 !important; padding: 15px !important; }
+        .paper-dots, .paper-grid, .paper-ruled { background-color: #070d19 !important; border: 1px dashed #1e293b !important; }
+      `;
+    } else {
+      // Classic Executive (Default)
+      const isDark = selectedPaper.id === 'stars' || selectedPaper.id === 'none-dark' || selectedPaper.id === 'none';
+      bgColor = isDark ? '#0f172a' : '#ffffff';
+      textColor = isDark ? '#f8fafc' : '#1e293b';
+      accentColor = '#0284c7';
+      fontFamilyRule = "'Inter', 'Segoe UI', Arial, sans-serif";
+
+      customHeaderHtml = `
+        <div style="margin-bottom: 30px; border-bottom: 3px solid ${accentColor}; padding-bottom: 20px;">
+          <h1 style="font-size: 26pt; font-weight: 900; color: ${isDark ? '#38bdf8' : '#0f172a'}; margin: 0; line-height: 1.2;">${activeTopic.title}</h1>
+          <p style="font-size: 10pt; color: ${isDark ? '#94a3b8' : '#64748b'}; margin-top: 8px; text-transform: uppercase; letter-spacing: 2px;">Strategic Notes Export • ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+        </div>
+      `;
+
+      customContentStyles = `
+        .note-content h1, .note-content h2 { font-size: 18pt; font-weight: 900; margin-top: 25pt; margin-bottom: 12pt; color: ${isDark ? '#38bdf8' : '#0369a1'}; }
+        .note-content h3 { font-size: 14pt; font-weight: 800; margin-top: 18pt; margin-bottom: 10pt; color: ${isDark ? '#e2e8f0' : '#1e293b'}; }
+        .note-content p { margin-bottom: 12pt; }
+        .paper-dots, .paper-grid, .paper-ruled, .paper-engineering { background-image: none !important; background-color: ${isDark ? '#1e293b' : '#f8fafc'} !important; border: 1px solid ${isDark ? '#334155' : '#e2e8f0'} !important; border-radius: 12px !important; padding: 15px !important; }
+        .synthesis-card-wrapper, .qa-board-wrapper { border: 2px solid ${isDark ? '#334155' : '#e2e8f0'} !important; border-radius: 15px !important; padding: 20px !important; margin: 20px 0 !important; background-color: ${isDark ? '#1e293b' : '#f8fafc'} !important; color: ${textColor} !important; }
+        table { width: 100% !important; border-collapse: collapse; margin: 20px 0; }
+        th, td { border: 1px solid ${isDark ? '#334155' : '#e2e8f0'}; padding: 12px; }
+        th { background-color: ${isDark ? '#1e293b' : '#f8fafc'}; font-weight: bold; color: ${isDark ? '#ffffff' : '#000000'}; }
+      `;
+    }
 
     // Create a robust container for export with fixed layout width
     const exportContainer = document.createElement('div');
+    exportContainer.id = 'pdf-export-body';
     exportContainer.style.position = 'relative';
     exportContainer.style.zIndex = '999999';
     exportContainer.style.pointerEvents = 'none';
@@ -79,31 +256,29 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     exportContainer.style.padding = '40px';
     exportContainer.style.backgroundColor = bgColor;
     exportContainer.style.color = textColor;
-    exportContainer.style.fontFamily = "'Inter', 'Segoe UI', Arial, sans-serif";
+    exportContainer.style.fontFamily = fontFamilyRule;
     
     exportContainer.innerHTML = `
-      <div style="margin-bottom: 30px; border-bottom: 3px solid ${accentColor}; padding-bottom: 20px;">
-        <h1 style="font-size: 26pt; font-weight: 900; color: ${isDark ? '#38bdf8' : '#0f172a'}; margin: 0; line-height: 1.2;">${activeTopic.title}</h1>
-        <p style="font-size: 10pt; color: ${isDark ? '#94a3b8' : '#64748b'}; margin-top: 8px; text-transform: uppercase; letter-spacing: 2px;">Strategic Notes Export • ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
-      </div>
+      ${customHeaderHtml}
       <div class="note-content" style="line-height: 1.6; font-size: 11.5pt;">
         ${editorRef.current.innerHTML}
       </div>
+      ${customFooterHtml}
       <style>
+        ${fontImports ? fontImports : ''}
         @page {
           size: A4;
           margin: 1in;
         }
         body {
-          background-color: ${bgColor};
-          color: ${textColor};
-          font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+          background-color: ${bgColor} !important;
+          color: ${textColor} !important;
+          font-family: ${fontFamilyRule} !important;
           -webkit-font-smoothing: antialiased;
         }
         h1, h2, h3, h4, h5, h6 {
           page-break-after: avoid;
           break-after: avoid;
-          color: ${isDark ? '#38bdf8' : '#0f172a'};
         }
         
         /* Prevent slicing lines of text and elements horizontally during page break (allow tables and cards to break across pages) */
@@ -121,20 +296,12 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
         .flex { display: flex !important; }
         .grid { display: grid !important; }
 
-        .note-content h1, .note-content h2 { font-size: 18pt; font-weight: 900; margin-top: 25pt; margin-bottom: 12pt; color: ${isDark ? '#38bdf8' : '#0369a1'}; }
-        .note-content h3 { font-size: 14pt; font-weight: 800; margin-top: 18pt; margin-bottom: 10pt; color: ${isDark ? '#e2e8f0' : '#1e293b'}; }
-        .note-content p { margin-bottom: 12pt; }
-        .paper-dots, .paper-grid, .paper-ruled, .paper-engineering { background-image: none !important; background-color: ${isDark ? '#1e293b' : '#f8fafc'} !important; border: 1px solid ${isDark ? '#334155' : '#e2e8f0'} !important; border-radius: 12px !important; padding: 15px !important; }
-        .synthesis-card-wrapper, .qa-board-wrapper { border: 2px solid ${isDark ? '#334155' : '#e2e8f0'} !important; border-radius: 15px !important; padding: 20px !important; margin: 20px 0 !important; background-color: ${isDark ? '#1e293b' : '#f8fafc'} !important; color: ${textColor} !important; }
-        
-        table { width: 100% !important; border-collapse: collapse; margin: 20px 0; }
-        th, td { border: 1px solid ${isDark ? '#334155' : '#e2e8f0'}; padding: 12px; }
-        th { background-color: ${isDark ? '#1e293b' : '#f8fafc'}; font-weight: bold; color: ${isDark ? '#ffffff' : '#000000'}; }
+        ${customContentStyles}
       </style>
     `;
 
     const opt = {
-      margin:       [20.32, 20.32, 20.32, 20.32] as [number, number, number, number], // 0.8 inches margin on all sides
+      margin:       [12.7, 12.7, 12.7, 12.7] as [number, number, number, number], // 0.5 inches margin on all sides
       filename:     `${activeTopic.title || 'Notes'}.pdf`,
       image:        { type: 'jpeg' as const, quality: 0.98 },
       html2canvas:  { 
@@ -168,7 +335,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     overlay.innerHTML = `
       <div style="text-align: center;">
         <div style="margin-bottom: 20px; font-size: 20px; font-weight: 900; tracking: tight;">GENERATING DOCUMENT PDF...</div>
-        <div style="font-size: 13px; color: #94a3b8; font-weight: bold; margin-bottom: 20px;">Applying professional themes and layout presets</div>
+        <div style="font-size: 13px; color: #94a3b8; font-weight: bold; margin-bottom: 20px;">Applying your selected theme styling: "${styleToUse.toUpperCase()}"</div>
         <div style="display: inline-block; width: 32px; height: 32px; border: 4px solid #38bdf8; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite;"></div>
       </div>
       <style>
@@ -189,12 +356,36 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     // Give browser brief window to layout and paint the added container
     await new Promise(resolve => setTimeout(resolve, 100));
 
+    // To prevent html2canvas from crash-looping or hanging on modern CSS stylesheet rules (e.g. Tailwind v4 variables, container queries),
+    // we temporarily disable all external stylesheets during PDF rendering. High-z-index dark overlay hides any content flicker.
+    const disabledSheets: (HTMLStyleElement | HTMLLinkElement)[] = [];
+    try {
+      Array.from(document.querySelectorAll('style, link[rel="stylesheet"]')).forEach((sheet) => {
+        if (sheet instanceof HTMLStyleElement || sheet instanceof HTMLLinkElement) {
+          if (!exportContainer.contains(sheet) && !overlay.contains(sheet) && (sheet as any).disabled !== true) {
+            (sheet as any).disabled = true;
+            disabledSheets.push(sheet);
+          }
+        }
+      });
+    } catch (err) {
+      console.warn("Could not disable style sheets during PDF render:", err);
+    }
+
     try {
       await html2pdf().set(opt).from(exportContainer).save();
     } catch (e) {
       console.error(e);
       alert('Export failed.');
     } finally {
+      // Restore all disabled sheets
+      disabledSheets.forEach((sheet) => {
+        try {
+          (sheet as any).disabled = false;
+        } catch (err) {
+          console.error("Error restoring stylesheet:", err);
+        }
+      });
       document.body.removeChild(exportContainer);
       document.body.removeChild(overlay);
       window.scrollTo(originalScrollX, originalScrollY);
@@ -203,26 +394,27 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
 
 
   const exportWord = () => {
-    if (!editorRef.current) return;
-    const findTopicLocal = (items: DPSSTopic[], id: string): DPSSTopic | null => {
-      for (const item of items) {
-        if (item.id === id) return item;
-        if (item.children && item.children.length > 0) {
-          const found = findTopicLocal(item.children, id);
-          if (found) return found;
+    try {
+      if (!editorRef.current) return;
+      const findTopicLocal = (items: DPSSTopic[], id: string): DPSSTopic | null => {
+        for (const item of items) {
+          if (item.id === id) return item;
+          if (item.children && item.children.length > 0) {
+            const found = findTopicLocal(item.children, id);
+            if (found) return found;
+          }
         }
-      }
-      return null;
-    };
-    const activeTopic = (selectedTopicId ? findTopicLocal(data?.dpssTopics || [], selectedTopicId) : null) || { title: 'Notes' };
-    
-    const settings = data.settings || { fontSize: 12, fontFamily: "'Inter', sans-serif" };
-    const paperStyle = settings.paperStyle || 'none';
-    const selectedPaper = PAPER_STYLES.find(s => s.id === paperStyle) || PAPER_STYLES[0];
+        return null;
+      };
+      const activeTopic = (selectedTopicId ? findTopicLocal(data?.dpssTopics || [], selectedTopicId) : null) || { title: 'Notes' };
+      
+      const settings = data.settings || { fontSize: 12, fontFamily: "'Inter', sans-serif" };
+      const paperStyle = settings.paperStyle || 'none';
+      const selectedPaper = PAPER_STYLES.find(s => s.id === paperStyle) || PAPER_STYLES[0];
 
-    const isDark = selectedPaper.id === 'stars' || selectedPaper.id === 'none-dark' || selectedPaper.id === 'none';
-    const bgColor = isDark ? '#0f172a' : '#ffffff';
-    const textColor = isDark ? '#f8fafc' : '#334155';
+      const isDark = selectedPaper.id === 'stars' || selectedPaper.id === 'none-dark' || selectedPaper.id === 'none';
+      const bgColor = isDark ? '#0f172a' : '#ffffff';
+      const textColor = isDark ? '#f8fafc' : '#334155';
     
     const header = `
       <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
@@ -291,15 +483,20 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       </html>
     `;
     
-    const blob = new Blob(['\ufeff', header], { type: 'application/msword' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${activeTopic.title || 'Notes'}.doc`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+      const blob = new Blob(['\ufeff', header], { type: 'application/vnd.ms-word;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute('target', '_blank');
+      link.download = `${activeTopic.title || 'Notes'}.doc`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("MS Word Export failed:", e);
+      alert("Note export to MS Word failed. Please try again.");
+    }
   };
 
 
@@ -2519,7 +2716,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                               </span>
                             </button>
                             <button 
-                              onClick={() => { exportPDF(); setShowExportMenu(false); }}
+                              onClick={() => { setShowExportStyleModal(true); setShowExportMenu(false); }}
                               className="flex items-center justify-between w-full text-left px-3 py-2 hover:bg-red-50 text-slate-700 hover:text-red-700 rounded-xl transition-colors font-bold text-xs"
                             >
                               <span className="flex items-center gap-2">
@@ -3177,7 +3374,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
             </div>
             
             <p className="text-xs text-slate-500">
-              Anyone with this link can view and import exactly this study topic folder structure (including all nesting notes) to their portal!
+               Anyone with this link can view and import exactly this study topic folder structure (including all nesting notes) to their portal!
             </p>
             
             <div className="flex items-center bg-slate-50 dark:bg-slate-950 p-3 rounded-2xl border border-slate-200/60 dark:border-slate-800">
@@ -3246,6 +3443,205 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
               >
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showExportStyleModal && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md flex items-center justify-center p-4 z-[99999] animate-fade-in font-sans">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-[24px] max-w-2xl w-full shadow-2xl space-y-6">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-slate-800">
+              <div>
+                <h3 className="text-sm font-black tracking-wider uppercase text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  <Palette size={18} className="text-orange-500" /> Choose Export Style
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Configure layout, formatting, and design presets for your notes export</p>
+              </div>
+              <button 
+                onClick={() => setShowExportStyleModal(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
+                title="Close"
+              >
+                <MoreHorizontal size={18} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Left Side: Style Picker List */}
+              <div className="space-y-2.5 max-h-[350px] overflow-y-auto pr-1">
+                {[
+                  {
+                    id: 'executive',
+                    name: 'Classic Executive',
+                    desc: 'Clean business serif, high readability layout with deep blue headers & solid boundaries.',
+                    icon: '👔',
+                    accentClass: 'border-blue-500 bg-blue-50/10'
+                  },
+                  {
+                    id: 'handwritten',
+                    name: 'Cozy Handwritten',
+                    desc: 'Warm notebook diary feel with cursive scripting (Architects Daughter) on ivory lined-lined paper.',
+                    icon: '✍️',
+                    accentClass: 'border-amber-500 bg-amber-50/10'
+                  },
+                  {
+                    id: 'minimalist',
+                    name: 'Nordic Minimalist',
+                    desc: 'Sophisticated literary formatting with Georgia serif fonts, elegant white spaces and zero clutter.',
+                    icon: '🌿',
+                    accentClass: 'border-slate-400 bg-slate-50/10'
+                  },
+                  {
+                    id: 'academic',
+                    name: 'Academic Citation',
+                    desc: 'Standard research format featuring a double-lined header, citation metadata, running page numbers & footers.',
+                    icon: '🎓',
+                    accentClass: 'border-purple-500 bg-purple-50/10'
+                  },
+                  {
+                    id: 'retro',
+                    name: 'Retro Technical',
+                    desc: 'Phosphor green monospace coding log layout. System stamp headers, dotted dividers and dark diagnostic styling.',
+                    icon: '📟',
+                    accentClass: 'border-emerald-500 bg-emerald-50/10'
+                  }
+                ].map((style) => (
+                  <button
+                    key={style.id}
+                    onClick={() => setSelectedExportStyle(style.id as any)}
+                    className={`w-full text-left p-3.5 rounded-2xl border-2 transition-all flex items-start gap-3.5 cursor-pointer hover:border-slate-300 dark:hover:border-slate-700 ${
+                      selectedExportStyle === style.id 
+                        ? `${style.accentClass} border-orange-500 ring-2 ring-orange-500/20`
+                        : 'border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/20'
+                    }`}
+                  >
+                    <span className="text-2xl mt-0.5">{style.icon}</span>
+                    <div className="flex-1">
+                      <div className="text-xs font-black text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                        {style.name}
+                        {selectedExportStyle === style.id && <span className="h-1.5 w-1.5 rounded-full bg-orange-500 animate-pulse" />}
+                      </div>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">{style.desc}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              {/* Right Side: Style Live Preview */}
+              <div className="border border-slate-200 dark:border-slate-800 rounded-3xl p-5 flex flex-col justify-between bg-slate-50/50 dark:bg-slate-950/40 relative overflow-hidden min-h-[300px]">
+                {/* Background watermark decorations */}
+                <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 opacity-5 pointer-events-none select-none flex items-center justify-center font-mono text-[70px] font-black">
+                  PREVIEW
+                </div>
+
+                <div className="space-y-4">
+                  <div className="text-[10px] uppercase tracking-widest font-black text-slate-400 dark:text-slate-500 mb-1 flex items-center gap-1.5">
+                    Layout Preview
+                  </div>
+
+                  {/* Render Mock Preview based on selectedExportStyle */}
+                  {selectedExportStyle === 'executive' && (
+                    <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-4 rounded-2xl shadow-sm space-y-3 font-sans">
+                      <div className="border-b-2 border-blue-500 pb-2">
+                        <div className="h-3 w-28 bg-slate-800 dark:bg-slate-100 rounded" />
+                        <div className="h-1.5 w-16 bg-slate-400 mt-1.5 rounded" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <div className="h-2 w-full bg-slate-300 dark:bg-slate-700 rounded" />
+                        <div className="h-2 w-5/6 bg-slate-300 dark:bg-slate-700 rounded" />
+                        <div className="h-2 w-4/6 bg-slate-300 dark:bg-slate-700 rounded" />
+                      </div>
+                      <div className="border border-slate-200 dark:border-slate-800 p-2 rounded-lg bg-slate-50 dark:bg-slate-950/50">
+                        <div className="h-1.5 w-1/3 bg-blue-400 rounded mb-1" />
+                        <div className="h-1.5 w-2/3 bg-slate-300 dark:bg-slate-700 rounded" />
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedExportStyle === 'handwritten' && (
+                    <div className="bg-[#fffdf5] border border-[#f5e0c5] p-4 rounded-2xl shadow-sm space-y-3 font-serif relative" style={{ backgroundImage: 'linear-gradient(#fcd34d 1px, transparent 1px)', backgroundSize: '100% 1.4rem' }}>
+                      <div className="border-b border-dashed border-amber-800 pb-1 font-sans text-amber-900">
+                        <span className="font-bold text-xs font-serif">📔 Handwritten Note Title</span>
+                        <div className="text-[8px] text-amber-700 italic">Scribbled on notebook...</div>
+                      </div>
+                      <div className="space-y-2 text-amber-950 pt-1 text-[11px] leading-relaxed">
+                        <div className="h-1.5 w-11/12 bg-amber-800/20 rounded" />
+                        <div className="h-1.5 w-10/12 bg-amber-800/20 rounded" />
+                        <div className="h-1.5 w-8/12 bg-amber-800/20 rounded" />
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedExportStyle === 'minimalist' && (
+                    <div className="bg-[#fafafa] border border-slate-100 p-4 rounded-2xl shadow-sm space-y-3 font-serif">
+                      <div className="border-b border-slate-200 pb-2 text-center">
+                        <div className="text-[8px] text-slate-400 tracking-widest uppercase">M I N I M A L • S T U D Y</div>
+                        <div className="h-4 w-32 bg-slate-800 mx-auto mt-1 rounded-sm" />
+                      </div>
+                      <div className="space-y-2 text-[10px] leading-relaxed px-2 text-slate-600">
+                        <div className="h-2 w-full bg-slate-200 rounded-none ml-auto mr-auto" />
+                        <div className="h-2 w-full bg-slate-200 rounded-none" />
+                        <div className="h-2 w-11/12 bg-slate-200 rounded-none" />
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedExportStyle === 'academic' && (
+                    <div className="bg-[#ffffff] border border-slate-300 p-4 rounded-2xl shadow-sm space-y-3 font-serif relative">
+                      <div className="border-b-4 border-double border-black pb-1.5 text-center">
+                        <div className="text-[7px] font-bold tracking-wider text-black">JOURNAL OF ACADEMIC PORTFOLIOS</div>
+                        <div className="h-3 w-40 bg-black mx-auto mt-1 rounded-none" />
+                      </div>
+                      <div className="space-y-1.5 text-[9px] leading-relaxed text-black px-1">
+                        <div className="h-1.5 w-full bg-slate-300 rounded-none text-justify" />
+                        <div className="h-1.5 w-full bg-slate-300 rounded-none" />
+                        <div className="h-1.5 w-10/12 bg-slate-300 rounded-none" />
+                      </div>
+                      <div className="border-t border-black pt-1 flex justify-between text-[6px] text-slate-500 font-serif">
+                        <span>LEARNING RESEARCH ARCHIVE</span>
+                        <span>PAGE 1</span>
+                        <span>CONFIDENTIAL COPY</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedExportStyle === 'retro' && (
+                    <div className="bg-[#030712] border-2 border-emerald-500 p-4 rounded-2xl space-y-2 font-mono text-emerald-400">
+                      <div className="border border-dashed border-emerald-500 p-2 bg-[#0e171b] text-[8px]">
+                        <div className="flex justify-between tracking-tight text-emerald-600 font-bold mb-1">
+                          <span>[SYS.STATUS: LIVE]</span>
+                          <span>PORT: 3000</span>
+                        </div>
+                        <div className="font-bold text-emerald-300">&gt; DOCUMENT RECORD</div>
+                      </div>
+                      <div className="space-y-1 text-[8px]">
+                        <div className="h-1 w-full bg-emerald-800" />
+                        <div className="h-1 w-11/12 bg-emerald-800" />
+                        <div className="h-1 w-full bg-emerald-800" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3 z-10 bg-transparent">
+                  <button
+                    onClick={() => setShowExportStyleModal(false)}
+                    className="h-9 px-4 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-[10px] uppercase font-black tracking-widest transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      exportPDF(selectedExportStyle);
+                      setShowExportStyleModal(false);
+                    }}
+                    className="h-9 px-5 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-[10px] uppercase font-black tracking-widest shadow-lg shadow-orange-600/30 active:scale-95 hover:scale-105 transition-all"
+                  >
+                    Generate Export 🚀
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

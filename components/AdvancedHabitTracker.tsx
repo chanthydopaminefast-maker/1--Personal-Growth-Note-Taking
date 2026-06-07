@@ -1452,9 +1452,36 @@ date format must be 'yyyy-MM-dd'.`;
     // Give browser brief window to layout and paint the added container
     await new Promise(resolve => setTimeout(resolve, 100));
 
+    // To prevent html2canvas from crash-looping or hanging on modern CSS stylesheet rules (e.g. Tailwind v4 variables, container queries),
+    // we temporarily disable all external stylesheets during PDF rendering. High-z-index dark overlay hides any content flicker.
+    const disabledSheets: (HTMLStyleElement | HTMLLinkElement)[] = [];
+    try {
+      Array.from(document.querySelectorAll('style, link[rel="stylesheet"]')).forEach((sheet) => {
+        if (sheet instanceof HTMLStyleElement || sheet instanceof HTMLLinkElement) {
+          if (!container.contains(sheet) && !overlay.contains(sheet) && (sheet as any).disabled !== true) {
+            (sheet as any).disabled = true;
+            disabledSheets.push(sheet);
+          }
+        }
+      });
+    } catch (err) {
+      console.warn("Could not disable style sheets during PDF render:", err);
+    }
+
     try {
       await html2pdf().set(opt).from(container).save();
+    } catch (err) {
+      console.error(err);
+      alert('Export failed. Please try again.');
     } finally {
+      // Restore all disabled sheets
+      disabledSheets.forEach((sheet) => {
+        try {
+          (sheet as any).disabled = false;
+        } catch (err) {
+          console.error("Error restoring stylesheet:", err);
+        }
+      });
       document.body.removeChild(container);
       document.body.removeChild(overlay);
       window.scrollTo(originalScrollX, originalScrollY);

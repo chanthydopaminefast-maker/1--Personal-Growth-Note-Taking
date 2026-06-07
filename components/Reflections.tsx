@@ -232,16 +232,40 @@ const ReflectionCard: React.FC<ReflectionCardProps> = ({
     // Give browser brief window to layout and paint the added container
     await new Promise(resolve => setTimeout(resolve, 100));
 
+    // To prevent html2canvas from crash-looping or hanging on modern CSS stylesheet rules (e.g. Tailwind v4 variables, container queries),
+    // we temporarily disable all external stylesheets during PDF rendering. High-z-index dark overlay hides any content flicker.
+    const disabledSheets: (HTMLStyleElement | HTMLLinkElement)[] = [];
+    try {
+      Array.from(document.querySelectorAll('style, link[rel="stylesheet"]')).forEach((sheet) => {
+        if (sheet instanceof HTMLStyleElement || sheet instanceof HTMLLinkElement) {
+          if (!exportContainer.contains(sheet) && !overlay.contains(sheet) && (sheet as any).disabled !== true) {
+            (sheet as any).disabled = true;
+            disabledSheets.push(sheet);
+          }
+        }
+      });
+    } catch (err) {
+      console.warn("Could not disable style sheets during PDF render:", err);
+    }
+
     try {
       await html2pdf().set(opt).from(exportContainer).save();
-     } catch (e) {
-       console.error(e);
-       alert('Export failed. Please try again.');
-     } finally {
-       document.body.removeChild(exportContainer);
-       document.body.removeChild(overlay);
-       window.scrollTo(originalScrollX, originalScrollY);
-     }
+    } catch (e) {
+      console.error(e);
+      alert('Export failed. Please try again.');
+    } finally {
+      // Restore all disabled sheets
+      disabledSheets.forEach((sheet) => {
+        try {
+          (sheet as any).disabled = false;
+        } catch (err) {
+          console.error("Error restoring stylesheet:", err);
+        }
+      });
+      document.body.removeChild(exportContainer);
+      document.body.removeChild(overlay);
+      window.scrollTo(originalScrollX, originalScrollY);
+    }
    };
 
   const exportWord = () => {

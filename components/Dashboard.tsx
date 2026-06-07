@@ -438,6 +438,22 @@ const Dashboard: React.FC<DashboardProps> = ({ data }) => {
     // Give browser brief window to layout and paint the added container
     await new Promise(resolve => setTimeout(resolve, 100));
 
+    // To prevent html2canvas from crash-looping or hanging on modern CSS stylesheet rules (e.g. Tailwind v4 variables, container queries),
+    // we temporarily disable all external stylesheets during PDF rendering.
+    const disabledSheets: (HTMLStyleElement | HTMLLinkElement)[] = [];
+    try {
+      Array.from(document.querySelectorAll('style, link[rel="stylesheet"]')).forEach((sheet) => {
+        if (sheet instanceof HTMLStyleElement || sheet instanceof HTMLLinkElement) {
+          if (!container.contains(sheet) && (sheet as any).disabled !== true) {
+            (sheet as any).disabled = true;
+            disabledSheets.push(sheet);
+          }
+        }
+      });
+    } catch (err) {
+      console.warn("Could not disable style sheets during PDF render:", err);
+    }
+
     try {
       const opt = {
         margin: [10, 10, 10, 10] as [number, number, number, number],
@@ -459,6 +475,14 @@ const Dashboard: React.FC<DashboardProps> = ({ data }) => {
       console.error(e);
       alert('Export failed. Please try again.');
     } finally {
+      // Restore all disabled sheets
+      disabledSheets.forEach((sheet) => {
+        try {
+          (sheet as any).disabled = false;
+        } catch (err) {
+          console.error("Error restoring stylesheet:", err);
+        }
+      });
       document.body.removeChild(container);
     }
   };
@@ -522,7 +546,7 @@ const Dashboard: React.FC<DashboardProps> = ({ data }) => {
   }, [data.expenses, data.settings?.exchangeRate, financeFilterInterval]);
 
   return (
-    <div className="h-full overflow-y-auto custom-scrollbar-amber p-4 md:p-8 bg-slate-50/50 dark:bg-slate-900/50 transition-colors">
+    <div className="w-full flex-1 min-h-0 h-full overflow-y-auto custom-scrollbar-amber p-4 md:p-8 bg-slate-50/50 dark:bg-slate-900/50 transition-colors">
       <div className="w-full space-y-8">
         
         {/* Header Section */}
@@ -803,6 +827,23 @@ const Dashboard: React.FC<DashboardProps> = ({ data }) => {
 
         </div>
       </div>
+      <style>{`
+        .custom-scrollbar-amber::-webkit-scrollbar {
+          width: 6px;
+          height: 6px;
+        }
+        .custom-scrollbar-amber::-webkit-scrollbar-track {
+          background: rgba(0, 0, 0, 0.02);
+          border-radius: 10px;
+        }
+        .custom-scrollbar-amber::-webkit-scrollbar-thumb {
+          background: rgba(245, 158, 11, 0.15);
+          border-radius: 10px;
+        }
+        .custom-scrollbar-amber::-webkit-scrollbar-thumb:hover {
+          background: rgba(245, 158, 11, 0.45);
+        }
+      `}</style>
     </div>
   );
 };

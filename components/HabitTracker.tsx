@@ -595,9 +595,45 @@ export const HabitTracker: React.FC<HabitTrackerProps> = ({ data, onUpdate, onUp
       jsPDF:        { unit: 'mm', format: 'a4', orientation: 'landscape', compress: true }
     };
 
+    // To prevent html2canvas from crash-looping or hanging on modern CSS stylesheet rules (e.g. Tailwind v4 variables, container queries),
+    // we temporarily disable all external stylesheets during PDF rendering.
+    const disabledSheets: (HTMLStyleElement | HTMLLinkElement)[] = [];
+    try {
+      Array.from(document.querySelectorAll('style, link[rel="stylesheet"]')).forEach((sheet) => {
+        if (sheet instanceof HTMLStyleElement || sheet instanceof HTMLLinkElement) {
+          if (!exportContainer.contains(sheet) && (sheet as any).disabled !== true) {
+            (sheet as any).disabled = true;
+            disabledSheets.push(sheet);
+          }
+        }
+      });
+    } catch (err) {
+      console.warn("Could not disable style sheets during PDF render:", err);
+    }
+
     // @ts-ignore
     html2pdf().from(exportContainer).set(opt).save().then(() => {
+      // Restore all disabled sheets
+      disabledSheets.forEach((sheet) => {
+        try {
+          (sheet as any).disabled = false;
+        } catch (err) {
+          console.error("Error restoring stylesheet:", err);
+        }
+      });
       document.body.removeChild(exportContainer);
+    }).catch((e: any) => {
+      console.error(e);
+      // Restore on failure too!
+      disabledSheets.forEach((sheet) => {
+        try {
+          (sheet as any).disabled = false;
+        } catch (err) {
+          console.error("Error restoring stylesheet:", err);
+        }
+      });
+      document.body.removeChild(exportContainer);
+      alert('Export failed. Please try again.');
     });
   };
 
@@ -780,9 +816,45 @@ export const HabitTracker: React.FC<HabitTrackerProps> = ({ data, onUpdate, onUp
       jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait', compress: true }
     };
 
+    // To prevent html2canvas from crash-looping or hanging on modern CSS stylesheet rules (e.g. Tailwind v4 variables, container queries),
+    // we temporarily disable all external stylesheets during PDF rendering.
+    const disabledSheets: (HTMLStyleElement | HTMLLinkElement)[] = [];
+    try {
+      Array.from(document.querySelectorAll('style, link[rel="stylesheet"]')).forEach((sheet) => {
+        if (sheet instanceof HTMLStyleElement || sheet instanceof HTMLLinkElement) {
+          if (!exportContainer.contains(sheet) && (sheet as any).disabled !== true) {
+            (sheet as any).disabled = true;
+            disabledSheets.push(sheet);
+          }
+        }
+      });
+    } catch (err) {
+      console.warn("Could not disable style sheets during PDF render:", err);
+    }
+
     // @ts-ignore
     html2pdf().from(exportContainer).set(opt).save().then(() => {
+      // Restore all disabled sheets
+      disabledSheets.forEach((sheet) => {
+        try {
+          (sheet as any).disabled = false;
+        } catch (err) {
+          console.error("Error restoring stylesheet:", err);
+        }
+      });
       document.body.removeChild(exportContainer);
+    }).catch((e: any) => {
+      console.error(e);
+      // Restore on failure too!
+      disabledSheets.forEach((sheet) => {
+        try {
+          (sheet as any).disabled = false;
+        } catch (err) {
+          console.error("Error restoring stylesheet:", err);
+        }
+      });
+      document.body.removeChild(exportContainer);
+      alert('Export failed. Please try again.');
     });
   };
 
