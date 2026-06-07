@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { AppSettings, CurrentUser } from '../types';
-import { X, Save, Settings2, Type, Baseline, Paintbrush, Check, Cloud, LogIn, LogOut, Image as ImageIcon, Trash2, FileText, Coins, Table } from 'lucide-react';
+import { AppSettings, CurrentUser, AppData } from '../types';
+import { X, Save, Settings2, Type, Baseline, Paintbrush, Check, Cloud, LogIn, LogOut, Image as ImageIcon, Trash2, FileText, Coins, Table, Download, Upload } from 'lucide-react';
 import { PAPER_STYLES } from '../src/styles/paperStyles';
 import { signInWithEmailAndPassword, auth } from '../services/firebase';
 
@@ -13,6 +13,8 @@ interface Props {
   onLogin?: () => void;
   onPhoneLogin?: (user: any) => void;
   onLogout?: () => void;
+  appData?: AppData;
+  onImportData?: (importedData: AppData) => void;
 }
 
 const fontFamilies = [
@@ -33,8 +35,21 @@ const colors = [
   { name: 'Amber', value: '#b45309' },
 ];
 
-export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate, currentUser, onLogin, onPhoneLogin, onLogout }) => {
+const WALLPAPER_PRESETS = [
+  { name: 'Calm Oceanside Tracker', url: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&q=80&w=2000' },
+  { name: 'Ethereal Forest Mist', url: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&q=80&w=2000' },
+  { name: 'Nebula Starlight Cosmic', url: 'https://images.unsplash.com/photo-1506318137071-a8e063b4bec0?auto=format&fit=crop&q=80&w=2000' },
+  { name: 'Warm Minimalist Abstract', url: 'https://images.unsplash.com/photo-1579783902614-a3fb3927b6a5?auto=format&fit=crop&q=80&w=2000' },
+  { name: 'Classic Japanese Washi Accent', url: 'https://images.unsplash.com/photo-1528459801416-a9e53bbf4e17?auto=format&fit=crop&q=80&w=2000' },
+  { name: 'Serene Peak Sunrise Theme', url: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&q=80&w=2000' },
+  { name: 'Lofi Cozy Coffee Workspace', url: 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?auto=format&fit=crop&q=80&w=2000' },
+  { name: 'Minimal Solid Slate Dark', url: 'https://images.unsplash.com/photo-1533035353720-f1c6a75cd8ab?auto=format&fit=crop&q=80&w=2000' }
+];
+
+export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUpdate, currentUser, onLogin, onPhoneLogin, onLogout, appData, onImportData }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const importFileRef = useRef<HTMLInputElement>(null);
+  
   const [localSettings, setLocalSettings] = useState<AppSettings>({
     fontFamily: settings?.fontFamily || 'ui-sans-serif, system-ui, -apple-system, sans-serif',
     fontSize: settings?.fontSize || 16,
@@ -46,6 +61,8 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
     currency: settings?.currency || 'USD',
     exchangeRate: settings?.exchangeRate || 4000,
     backgroundImage: settings?.backgroundImage,
+    backgroundImageBlur: settings?.backgroundImageBlur || 0,
+    backgroundDimOpacity: settings?.backgroundDimOpacity !== undefined ? settings.backgroundDimOpacity : 20,
     paperStyle: settings?.paperStyle || 'none',
     tableBorderThickness: settings?.tableBorderThickness || 2,
     tableBorderColor: settings?.tableBorderColor || '#334155'
@@ -56,6 +73,60 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
   const [isSignUpMode, setIsSignUpMode] = useState(false);
   const [isEmailLoading, setIsEmailLoading] = useState(false);
   const [emailError, setEmailError] = useState('');
+  const [importError, setImportError] = useState('');
+  const [importSuccess, setImportSuccess] = useState('');
+
+  const handleDownloadJSON = () => {
+    if (!appData) return;
+    try {
+      const json = JSON.stringify(appData, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.href = url;
+      const date = new Date().toISOString().split('T')[0];
+      downloadAnchor.download = `growth-portal-backup-${date}.json`;
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      console.error(e);
+      alert("Error generating manual backup file");
+    }
+  };
+
+  const handleImportJSON = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setImportError('');
+    setImportSuccess('');
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const parsed = JSON.parse(event.target?.result as string);
+          if (!parsed || (typeof parsed !== 'object')) {
+            throw new Error("Invalid file content. Must be a valid JSON object.");
+          }
+          if (!Array.isArray(parsed.students)) {
+            throw new Error("Invalid schema: 'students' field is required and must be an array.");
+          }
+          
+          if (onImportData) {
+            onImportData(parsed);
+            setImportSuccess("Backup imported successfully! Applying changes...");
+            setTimeout(() => {
+              window.location.reload();
+            }, 1500);
+          }
+        } catch (err: any) {
+          console.error(err);
+          setImportError(err.message || "Failed to parse JSON backup file.");
+        }
+      };
+      reader.readAsText(file);
+    }
+  };
 
   const handleEmailPasswordAction = async () => {
     setEmailError('');
@@ -215,6 +286,66 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
                           </div>
                         </>
                     )}
+                </div>
+            </div>
+
+            {/* Manual Backup & Restore */}
+            <div className="space-y-4">
+                <div className="flex items-center gap-2 text-slate-800 font-black mb-2">
+                    <Download size={18} className="text-orange-500" />
+                    <h3 className="tracking-wide">Manual Backup</h3>
+                </div>
+
+                <div className="bg-white/50 border border-white/60 p-4 rounded-2xl space-y-4 shadow-sm flex flex-col items-center">
+                    <p className="text-xs text-slate-500 leading-relaxed text-center">
+                        Keep an independent JSON copy of your Growth Portal data locally on your computer or device.
+                    </p>
+                    
+                    <button 
+                      onClick={handleDownloadJSON}
+                      className="px-6 w-full py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-600/30 transition-all font-black uppercase text-xs flex items-center justify-center gap-2"
+                    >
+                      <Download size={16} /> Download JSON Backup
+                    </button>
+
+                    <div className="relative w-full">
+                        <div className="absolute inset-0 flex items-center">
+                            <div className="w-full border-t border-slate-200"></div>
+                        </div>
+                        <div className="relative flex justify-center text-[10px] uppercase font-bold text-slate-400 bg-transparent">
+                            <span className="bg-white/90 px-2 rounded">Restore</span>
+                        </div>
+                    </div>
+
+                    <p className="text-[10px] text-slate-400 leading-tight text-center">
+                        Import a previously downloaded `.json` backup file to restore your settings, student records, and custom progress data.
+                    </p>
+
+                    {importError && (
+                      <div className="w-full bg-red-50 text-red-600 border border-red-200 p-2.5 rounded-xl text-xs font-semibold leading-tight text-center">
+                        {importError}
+                      </div>
+                    )}
+
+                    {importSuccess && (
+                      <div className="w-full bg-green-50 text-green-600 border border-green-200 p-2.5 rounded-xl text-xs font-semibold leading-tight text-center">
+                        {importSuccess}
+                      </div>
+                    )}
+
+                    <button 
+                      onClick={() => importFileRef.current?.click()}
+                      className="px-6 w-full py-2.5 border border-slate-200 bg-white text-slate-700 rounded-xl hover:bg-slate-50 hover:border-slate-300 shadow-sm transition-all font-black uppercase text-xs flex items-center justify-center gap-2"
+                    >
+                      <Upload size={16} /> Import Backup File
+                    </button>
+                    <input 
+                      type="file" 
+                      ref={importFileRef} 
+                      onChange={handleImportJSON} 
+                      className="hidden" 
+                      accept=".json" 
+                    />
                 </div>
             </div>
             
@@ -421,38 +552,109 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
             <div className="space-y-4">
                 <div className="flex items-center gap-2 text-slate-800 font-black mb-2">
                     <ImageIcon size={18} className="text-emerald-500" />
-                    <h3 className="tracking-wide">Wallpaper</h3>
+                    <h3 className="tracking-wide">Wallpaper & Readability</h3>
                 </div>
 
                 <div className="bg-white/50 border border-white/60 p-4 rounded-2xl space-y-4 shadow-sm">
-                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1 mb-2">Workspace Background</p>
+                    {/* Preset wallpapers selection */}
+                    <div>
+                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1 mb-2">Preset Wallpapers</p>
+                        <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1 no-scrollbar border border-slate-200/50 p-1.5 rounded-xl bg-white/40">
+                            {WALLPAPER_PRESETS.map((preset) => {
+                                const isActive = localSettings.backgroundImage === preset.url;
+                                return (
+                                    <button
+                                        type="button"
+                                        key={preset.name}
+                                        onClick={() => setLocalSettings(prev => ({ ...prev, backgroundImage: preset.url }))}
+                                        className={`group relative h-14 rounded-lg overflow-hidden border text-left transition-all ${isActive ? 'ring-2 ring-emerald-500 border-transparent shadow shadow-emerald-500/20' : 'border-slate-200/60 hover:border-slate-300'}`}
+                                    >
+                                        <img src={preset.url} className="absolute inset-0 w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" alt={preset.name} />
+                                        <div className="absolute inset-0 bg-slate-905/40 group-hover:bg-slate-905/30 transition-colors" />
+                                        <div className="absolute bottom-1 left-1.5 right-1.5">
+                                            <p className="text-[9px] font-black text-white leading-tight truncate drop-shadow-sm">{preset.name}</p>
+                                        </div>
+                                        {isActive && (
+                                            <div className="absolute top-1 right-1 bg-emerald-500 text-white rounded-full p-0.5 shadow-sm">
+                                                <Check size={10} strokeWidth={3} />
+                                            </div>
+                                        )}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1 mb-1">Custom Background Wallpaper</p>
                     <div className="flex gap-3">
                         <button 
+                            type="button"
                             onClick={() => fileInputRef.current?.click()}
-                            className="flex-1 flex items-center justify-center gap-2 py-3 bg-white border border-slate-200 rounded-xl text-slate-700 hover:bg-slate-50 transition-all text-xs font-bold shadow-sm"
+                            className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-700 hover:bg-slate-50 transition-all text-xs font-bold shadow-sm"
                         >
-                            <ImageIcon size={14} /> Upload Custom
+                            <ImageIcon size={14} className="text-indigo-500" /> Upload Custom Photo
                         </button>
                         <input type="file" ref={fileInputRef} onChange={handleBackgroundUpload} className="hidden" accept="image/*" />
                         
                         {localSettings.backgroundImage && (
                             <button 
-                                onClick={() => setLocalSettings(prev => ({...prev, backgroundImage: undefined}))}
-                                className="w-12 h-12 flex items-center justify-center bg-rose-50 text-rose-500 border border-rose-100 rounded-xl hover:bg-rose-500 hover:text-white transition-all"
+                                type="button"
+                                onClick={() => setLocalSettings(prev => ({ ...prev, backgroundImage: undefined }))}
+                                className="w-10 h-10 flex items-center justify-center bg-rose-50 text-rose-500 border border-rose-100 rounded-xl hover:bg-rose-500 hover:text-white transition-all"
                                 title="Remove Background"
                             >
-                                <Trash2 size={18} />
+                                <Trash2 size={16} />
                             </button>
                         )}
                     </div>
+
                     {localSettings.backgroundImage && (
-                        <div className="mt-2 relative rounded-xl overflow-hidden border border-slate-200 h-24">
+                        <div className="relative rounded-xl overflow-hidden border border-slate-200 h-16 bg-slate-100">
                             <img src={localSettings.backgroundImage} className="w-full h-full object-cover" alt="Preview" />
                             <div className="absolute inset-0 bg-black/10 flex items-center justify-center">
-                                <span className="text-[9px] font-black uppercase text-white bg-black/40 px-2 py-1 rounded-md backdrop-blur-sm">Active Wallpaper</span>
+                                <span className="text-[8px] font-black uppercase text-white bg-black/45 px-2 py-0.5 rounded backdrop-blur-sm">Active Background</span>
                             </div>
                         </div>
                     )}
+
+                    {/* Background Readability Sliders */}
+                    <div className="border-t border-slate-200/50 pt-3 space-y-3">
+                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Adjust For Perfect Readability</p>
+                        
+                        {/* Background Dimming Opacity slider */}
+                        <div className="space-y-1.5">
+                            <div className="flex justify-between text-[11px] font-bold text-slate-600 pl-1">
+                                <span>Dimming Overlay (Darken)</span>
+                                <span className="bg-slate-100 px-1.5 py-0.5 rounded text-[10px] text-slate-700 font-extrabold">{localSettings.backgroundDimOpacity ?? 20}%</span>
+                            </div>
+                            <input 
+                                type="range" 
+                                min="0" 
+                                max="100" 
+                                value={localSettings.backgroundDimOpacity ?? 20}
+                                onChange={(e) => setLocalSettings(prev => ({ ...prev, backgroundDimOpacity: parseInt(e.target.value) }))}
+                                className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                            />
+                            <p className="text-[9px] text-slate-400 pl-1 leading-tight">Darkens the background. Set to 50% or more for maximum text contrast.</p>
+                        </div>
+
+                        {/* Background Blur px slider */}
+                        <div className="space-y-1.5">
+                            <div className="flex justify-between text-[11px] font-bold text-slate-600 pl-1">
+                                <span>Background Blur Depth</span>
+                                <span className="bg-slate-100 px-1.5 py-0.5 rounded text-[10px] text-slate-700 font-extrabold">{localSettings.backgroundImageBlur ?? 0}px</span>
+                            </div>
+                            <input 
+                                type="range" 
+                                min="0" 
+                                max="24" 
+                                value={localSettings.backgroundImageBlur ?? 0}
+                                onChange={(e) => setLocalSettings(prev => ({ ...prev, backgroundImageBlur: parseInt(e.target.value) }))}
+                                className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                            />
+                            <p className="text-[9px] text-slate-400 pl-1 leading-tight">Dissolves complex wallpaper details so you can focus entirely on your words.</p>
+                        </div>
+                    </div>
                 </div>
             </div>
 

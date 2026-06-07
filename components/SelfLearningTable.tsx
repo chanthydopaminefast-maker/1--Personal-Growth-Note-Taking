@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Zap, Plus, Trash2, Calendar, AlignLeft, AlignCenter, AlignRight, Highlighter, MousePointer2, Minus, Layout, Square, Quote, Settings2, FileUp, FileDown, Image as ImageIcon, Video, Music, FileText, Loader2, Wand2, Menu, ChevronLeft, GraduationCap, ChevronRight, Table, Grid3X3, Columns, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Palette, Italic, Underline, Strikethrough, Indent, Outdent, List, ListOrdered, CheckSquare, ChevronDown, MoreHorizontal, Download, Maximize2, Minimize2, Search, Archive, Folder, Star, Share2 } from 'lucide-react';
+import { Zap, Plus, Trash2, Calendar, AlignLeft, AlignCenter, AlignRight, Highlighter, MousePointer2, Minus, Layout, Square, Quote, Settings2, FileUp, FileDown, Image as ImageIcon, Video, Music, FileText, Loader2, Wand2, Menu, ChevronLeft, GraduationCap, ChevronRight, Table, Grid3X3, Columns, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Palette, Italic, Underline, Strikethrough, Indent, Outdent, List, ListOrdered, CheckSquare, ChevronDown, MoreHorizontal, Download, Maximize2, Minimize2, Search, Archive, Folder, Star, Share2, Pencil } from 'lucide-react';
 import { AppData, DPSSTopic } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { callNeuralEngine } from '../services/neuralEngine';
@@ -50,6 +50,8 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
 
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedTopics, setExpandedTopics] = useState<Record<string, boolean>>({});
+  const [editingTopicId, setEditingTopicId] = useState<string | null>(null);
+  const [editingTopicTitle, setEditingTopicTitle] = useState<string>('');
 
   // Share states
   const [sharingTopicId, setSharingTopicId] = useState<string | null>(null);
@@ -2614,7 +2616,44 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${style.indicator} ml-1.5`} />
             )}
             
-            <span className="font-bold text-[12px] truncate flex-1 min-w-0" title={topic.title}>{topic.title}</span>
+            {editingTopicId === topic.id ? (
+              <input
+                type="text"
+                value={editingTopicTitle}
+                onChange={(e) => setEditingTopicTitle(e.target.value)}
+                onBlur={() => {
+                  if (editingTopicTitle.trim()) {
+                    updateTopic(topic.id, { title: editingTopicTitle.trim() });
+                  }
+                  setEditingTopicId(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    if (editingTopicTitle.trim()) {
+                      updateTopic(topic.id, { title: editingTopicTitle.trim() });
+                    }
+                    setEditingTopicId(null);
+                  } else if (e.key === 'Escape') {
+                    setEditingTopicId(null);
+                  }
+                }}
+                onClick={(e) => e.stopPropagation()}
+                className="font-bold text-[12px] bg-white text-slate-800 px-1 py-0.5 rounded border border-slate-300 outline-none flex-1 min-w-0"
+                autoFocus
+              />
+            ) : (
+              <span 
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  setEditingTopicId(topic.id);
+                  setEditingTopicTitle(topic.title);
+                }}
+                className="font-bold text-[12px] truncate flex-1 min-w-0" 
+                title={topic.title}
+              >
+                {topic.title}
+              </span>
+            )}
           </div>
 
           <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -2624,6 +2663,18 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
                 title="Add nesting sub-topic"
               >
                 <Plus size={13} />
+              </button>
+              
+              <button 
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  setEditingTopicId(topic.id); 
+                  setEditingTopicTitle(topic.title); 
+                }} 
+                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-emerald-500 transition-all"
+                title="Rename Topic"
+              >
+                <Pencil size={13} />
               </button>
               
               <button 
@@ -3012,7 +3063,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
         )}
         {selectedTopic ? (
             <div className="space-y-4 h-full flex flex-col">
-                <div className="flex items-center gap-2 md:gap-4 px-2">
+                <div className="flex items-center gap-2 md:gap-4 px-2 mt-14 md:mt-0">
                   {!isSidebarOpen && <div className="w-12 md:hidden shrink-0" />} {/* Spacer for the absolute menu button */}
                   <input 
                       value={selectedTopic.title} 

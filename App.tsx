@@ -748,15 +748,31 @@ const App: React.FC = () => {
 
   return (
     <div 
-      className="h-screen bg-cover bg-center bg-no-repeat flex font-sans overflow-hidden md:overflow-hidden transition-all duration-700" 
+      className="h-screen flex font-sans overflow-hidden md:overflow-hidden transition-all duration-700 relative" 
       style={{ 
         fontFamily: data.settings?.fontFamily || "'Inter', sans-serif",
-        backgroundImage: data.settings?.backgroundImage ? `url(${data.settings.backgroundImage})` : 'none',
         backgroundColor: data.settings?.appBackgroundColor || 'transparent',
         color: data.settings?.fontColor || 'inherit'
       }}
     >
-      <div className="fixed inset-0 bg-slate-900/0 dark:bg-slate-950/80 transition-colors duration-700 pointer-events-none z-0"></div>
+      {/* Dynamic Blurred/Scalable Background Wallpaper Container */}
+      <div 
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat pointer-events-none transition-all duration-700"
+        style={{
+          backgroundImage: data.settings?.backgroundImage ? `url(${data.settings.backgroundImage})` : 'none',
+          filter: `blur(${data.settings?.backgroundImageBlur ?? 0}px)`,
+          transform: data.settings?.backgroundImageBlur ? 'scale(1.05)' : 'none', // Prevent blurred white border artifacting!
+          zIndex: 0
+        }}
+      />
+      {/* Dynamic Overlay Dimming Layer for Superior Text Readability */}
+      <div 
+        className="absolute inset-0 bg-slate-950 pointer-events-none transition-all duration-700"
+        style={{
+          opacity: (data.settings?.backgroundDimOpacity !== undefined ? data.settings.backgroundDimOpacity / 100 : 0.2),
+          zIndex: 0
+        }}
+      />
       
       <div className="flex h-screen w-full relative z-10 transition-colors duration-700 dark:text-slate-200">
         <Sidebar 
@@ -805,6 +821,8 @@ const App: React.FC = () => {
         onLogin={handleLogin as any}
         onPhoneLogin={handlePhoneLogin}
         onLogout={handleLogout}
+        appData={data}
+        onImportData={(importedData) => handleUpdate(importedData)}
       />
 
       <SupermanAnimation students={data.students} />
