@@ -43,16 +43,16 @@ const ReflectionCard: React.FC<ReflectionCardProps> = ({
   <motion.div 
     initial={{ opacity: 0, y: 20 }}
     animate={{ opacity: 1, y: 0 }}
-    className={`relative overflow-hidden rounded-[36px] p-6 md:p-8 bg-white/[0.02] backdrop-blur-3xl border border-white/10 shadow-xl group transition-all hover:bg-white/[0.05]`}
+    className={`relative overflow-hidden rounded-[36px] p-6 md:p-8 ${isDarkPaper ? 'bg-slate-900/50 backdrop-blur-3xl border-white/10 text-white' : 'bg-white/95 backdrop-blur-3xl border-slate-200/60 shadow-[0_8px_30px_rgb(0,0,0,0.04)] text-slate-900'} border hover:shadow-xl transition-all`}
   >
-    <div className={`absolute top-0 right-0 w-48 h-48 -mr-24 -mt-24 rounded-full ${colorClass} opacity-10 blur-3xl group-hover:opacity-20 transition-all`}></div>
+    <div className={`absolute top-0 right-0 w-48 h-48 -mr-24 -mt-24 rounded-full ${colorClass} opacity-10 blur-3xl transition-all`}></div>
     <div className="flex items-start justify-between mb-6">
       <div className="flex items-center gap-5">
         <div className={`p-4 rounded-[22px] ${colorClass} bg-opacity-90 text-white shadow-lg`}>
           <Icon size={26} />
         </div>
         <div>
-          <h3 className="text-2xl font-black text-slate-100 uppercase tracking-tighter italic flex items-center gap-2">
+          <h3 className={`text-2xl font-black ${isDarkPaper ? 'text-slate-100' : 'text-slate-900'} uppercase tracking-tighter italic flex items-center gap-2`}>
             {title}
             <div className="flex items-center gap-1">
               <button 
@@ -787,15 +787,16 @@ const ReflectionCard: React.FC<ReflectionCardProps> = ({
               key={archive.id}
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="bg-black/60 border border-white/10 p-8 rounded-[40px] shadow-2xl relative overflow-hidden"
+              className={`${isDarkPaper ? 'bg-[#0f172a] border-slate-700' : 'bg-white border-slate-200'} border p-8 rounded-[40px] shadow-2xl relative overflow-hidden`}
             >
-              <div className="absolute top-0 right-0 px-6 py-2 bg-white/5 text-white/30 text-[10px] font-black uppercase tracking-widest rounded-bl-[20px]">
+              <div className={`absolute top-0 right-0 px-6 py-2 ${isDarkPaper ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'} text-[10px] font-black uppercase tracking-widest rounded-bl-[20px]`}>
                 {new Date(archive.archivedAt!).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
               </div>
-              <h3 className="text-xl font-black text-orange-400 uppercase italic mb-4">{archive.title}</h3>
-              <div className="text-white/60 text-lg leading-relaxed whitespace-pre-wrap italic">
-                "{archive.content}"
-              </div>
+              <h3 className={`text-xl font-black ${isDarkPaper ? 'text-orange-400' : 'text-orange-600'} uppercase italic mb-4`}>{archive.title}</h3>
+              <div 
+                className={`${isDarkPaper ? 'text-slate-300' : 'text-slate-700'} text-lg leading-relaxed whitespace-pre-wrap italic`}
+                dangerouslySetInnerHTML={{ __html: archive.content }} 
+              />
             </motion.div>
           ))}
         </div>

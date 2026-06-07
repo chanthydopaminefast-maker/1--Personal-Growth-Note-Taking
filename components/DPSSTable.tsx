@@ -3314,31 +3314,35 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                         color: ${editorTextColor} !important;
                       }
 
-                      /* Force elegant light design on template elements with dark classes or hardcoded dark background behaviors */
-                      .editor-content [class*="bg-slate-9"],
-                      .editor-content [class*="bg-zinc-9"],
+                      /* Strip ALL dark backgrounds from AI generated layout containers */
+                      .editor-content [class*="bg-black"],
+                      .editor-content [class*="bg-gray-8"],
                       .editor-content [class*="bg-gray-9"],
-                      .editor-content [class*="bg-neutral-9"],
-                      .editor-content [class*="bg-[#0f"],
-                      .editor-content [class*="bg-[#1e"],
-                      .editor-content [class*="bg-[#11"],
-                      .editor-content [class*="bg-[#0a"],
-                      .editor-content [class*="bg-[#18"],
-                      .editor-content [class*="bg-[#1c"],
-                      .editor-content [class*="bg-black"] {
-                        background-color: ${editorCardBgColor} !important;
-                        background: ${editorCardBgColor} !important;
-                        border: 1.5px solid ${editorBorderColor} !important;
-                        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important;
+                      .editor-content [class*="bg-slate-8"],
+                      .editor-content [class*="bg-slate-9"],
+                      .editor-content [class*="bg-zinc-8"],
+                      .editor-content [class*="bg-zinc-9"],
+                      .editor-content [class*="bg-stone-8"],
+                      .editor-content [class*="bg-stone-9"],
+                      .editor-content [class*="bg-[#0"],
+                      .editor-content [class*="bg-[#1"] {
+                        background-color: transparent !important;
+                        background: transparent !important;
+                        color: ${editorTextColor} !important;
+                        border: 1px solid ${editorBorderColor} !important;
                       }
 
-                      .editor-content [class*="bg-slate-9"] p,
-                      .editor-content [class*="bg-slate-9"] div,
-                      .editor-content [class*="bg-slate-9"] span:not([style*="color"]):not([style*="background-color"]),
-                      .editor-content [class*="bg-zinc-9"] p,
-                      .editor-content [class*="bg-[#1e"] p,
-                      .editor-content [class*="bg-[#1e"] div,
-                      .editor-content [class*="bg-[#1e"] span:not([style*="color"]):not([style*="background-color"]) {
+                      .editor-content [class*="bg-black"] *,
+                      .editor-content [class*="bg-gray-8"] *,
+                      .editor-content [class*="bg-gray-9"] *,
+                      .editor-content [class*="bg-slate-8"] *,
+                      .editor-content [class*="bg-slate-9"] *,
+                      .editor-content [class*="bg-zinc-8"] *,
+                      .editor-content [class*="bg-zinc-9"] *,
+                      .editor-content [class*="bg-stone-8"] *,
+                      .editor-content [class*="bg-stone-9"] *,
+                      .editor-content [class*="bg-[#0"] *,
+                      .editor-content [class*="bg-[#1"] * {
                         color: ${editorTextColor} !important;
                       }
 

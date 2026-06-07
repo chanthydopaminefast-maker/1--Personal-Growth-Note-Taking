@@ -2719,7 +2719,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
       STYLING AND CONTRAST MANDATES:
       - ALWAYS wrap the top main heading (title) and description subtitle in a beautifully styled, centered block (e.g., div with text-center or items-center justify-center) to ensure it centers elegantly in the layout.
       - Use an elegant, professional light-colored theme.
-      - NEVER use dark or black backgrounds for any panels, structural blocks, or cards.
+      - NEVER use dark or black backgrounds (like bg-black, bg-gray-900, bg-slate-900) for any panels, structural blocks, or cards. ALWAYS use crisp, light colors.
       - DO NOT default to or always use blue (or sky-blue or cyan) colors. You can use ANY premium colors (e.g., emerald green, warm amber, violet, terracotta/rust, plum, rose-brown), but keep it varied and professional.
       - Contrast is critical: Make sure all text, numbers, list items, description paragraphs, and table/grid contents use highly readable deep charcoal/slate styles (e.g., text-slate-800, text-stone-900, or matching deep colors). NEVER use white, light-gray, or washed-out light text inside white/light cards or panels.
       - Use clean, light borders (e.g., border-slate-200, border-stone-200) instead of thick dark backgrounds.
@@ -2804,7 +2804,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
       STYLING AND CONTRAST MANDATES:
       - ALWAYS wrap the top main heading (title) and description subtitle in a beautifully styled, centered block (e.g., div with text-center or items-center justify-center) to ensure it centers elegantly in the layout, exactly as in the professional template screenshots.
       - Use an elegant, professional light-colored theme.
-      - NEVER use dark or black backgrounds for any panels, structural blocks, or cards.
+      - NEVER use dark or black backgrounds (like bg-black, bg-gray-900, bg-slate-900) for any panels, structural blocks, or cards. ALWAYS use crisp, light colors.
       - DO NOT default to or always use blue (or sky-blue or cyan) colors. You can use ANY premium colors (e.g., emerald green, warm amber, violet, terracotta/rust, plum, rose-brown), but keep it varied and professional.
       - Contrast is critical: Make sure all text, numbers, list items, description paragraphs, and table/grid contents use highly readable deep charcoal/slate styles (e.g., text-slate-800, text-stone-900, or matching deep colors). NEVER use white, light-gray, or washed-out light text inside white/light cards or panels.
       - Use clean, light borders (e.g., border-slate-200, border-stone-200) instead of thick dark backgrounds.
@@ -3693,6 +3693,38 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
                         border-radius: 16px !important;
                         padding: 18px !important;
                         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important;
+                      }
+
+                      /* Strip ALL dark backgrounds from AI generated layout containers */
+                      .editor-content [class*="bg-black"],
+                      .editor-content [class*="bg-gray-8"],
+                      .editor-content [class*="bg-gray-9"],
+                      .editor-content [class*="bg-slate-8"],
+                      .editor-content [class*="bg-slate-9"],
+                      .editor-content [class*="bg-zinc-8"],
+                      .editor-content [class*="bg-zinc-9"],
+                      .editor-content [class*="bg-stone-8"],
+                      .editor-content [class*="bg-stone-9"],
+                      .editor-content [class*="bg-[#0"],
+                      .editor-content [class*="bg-[#1"] {
+                        background-color: transparent !important;
+                        background: transparent !important;
+                        color: ${editorTextColor} !important;
+                        border: 1px solid ${editorBorderColor} !important;
+                      }
+
+                      .editor-content [class*="bg-black"] *,
+                      .editor-content [class*="bg-gray-8"] *,
+                      .editor-content [class*="bg-gray-9"] *,
+                      .editor-content [class*="bg-slate-8"] *,
+                      .editor-content [class*="bg-slate-9"] *,
+                      .editor-content [class*="bg-zinc-8"] *,
+                      .editor-content [class*="bg-zinc-9"] *,
+                      .editor-content [class*="bg-stone-8"] *,
+                      .editor-content [class*="bg-stone-9"] *,
+                      .editor-content [class*="bg-[#0"] *,
+                      .editor-content [class*="bg-[#1"] * {
+                        color: ${editorTextColor} !important;
                       }
 
                       /* Synthesis Cards and QA Boards use the user-selected theme colors for their backgrounds, borders, and main layout natively! */
