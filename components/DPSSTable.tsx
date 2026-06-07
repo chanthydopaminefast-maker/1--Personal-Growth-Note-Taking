@@ -227,20 +227,20 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       fontFamilyRule = "'Inter', 'Segoe UI', Arial, sans-serif";
 
       customHeaderHtml = `
-        <div style="margin-bottom: 30px; border-bottom: 3px solid ${accentColor}; padding-bottom: 20px;">
-          <h1 style="font-size: 26pt; font-weight: 900; color: ${isDark ? '#38bdf8' : '#0f172a'}; margin: 0; line-height: 1.2;">${activeTopic.title}</h1>
-          <p style="font-size: 10pt; color: ${isDark ? '#94a3b8' : '#64748b'}; margin-top: 8px; text-transform: uppercase; letter-spacing: 2px;">Strategic Notes Export • ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+        <div style="margin-bottom: 12px; border-bottom: 2px solid ${accentColor}; padding-bottom: 8px;">
+          <h1 style="font-size: 18pt; font-weight: 900; color: ${isDark ? '#38bdf8' : '#0f172a'}; margin: 0; line-height: 1.2;">${activeTopic.title}</h1>
+          <p style="font-size: 8.5pt; color: ${isDark ? '#94a3b8' : '#64748b'}; margin-top: 4px; text-transform: uppercase; letter-spacing: 2px; font-weight: 700; margin-bottom: 0;">Strategic Notes Export • ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
         </div>
       `;
 
       customContentStyles = `
-        .note-content h1, .note-content h2 { font-size: 18pt; font-weight: 900; margin-top: 25pt; margin-bottom: 12pt; color: ${isDark ? '#38bdf8' : '#0369a1'}; }
-        .note-content h3 { font-size: 14pt; font-weight: 800; margin-top: 18pt; margin-bottom: 10pt; color: ${isDark ? '#e2e8f0' : '#1e293b'}; }
-        .note-content p { margin-bottom: 12pt; }
-        .paper-dots, .paper-grid, .paper-ruled, .paper-engineering { background-image: none !important; background-color: ${isDark ? '#1e293b' : '#f8fafc'} !important; border: 1px solid ${isDark ? '#334155' : '#e2e8f0'} !important; border-radius: 12px !important; padding: 15px !important; }
-        .synthesis-card-wrapper, .qa-board-wrapper { border: 2px solid ${isDark ? '#334155' : '#e2e8f0'} !important; border-radius: 15px !important; padding: 20px !important; margin: 20px 0 !important; background-color: ${isDark ? '#1e293b' : '#f8fafc'} !important; color: ${textColor} !important; }
-        table { width: 100% !important; border-collapse: collapse; margin: 20px 0; }
-        th, td { border: 1px solid ${isDark ? '#334155' : '#e2e8f0'}; padding: 12px; }
+        .note-content h1, .note-content h2 { font-size: 14pt; font-weight: 900; margin-top: 14pt; margin-bottom: 6pt; color: ${isDark ? '#38bdf8' : '#0369a1'}; }
+        .note-content h3 { font-size: 12pt; font-weight: 800; margin-top: 10pt; margin-bottom: 5pt; color: ${isDark ? '#e2e8f0' : '#1e293b'}; }
+        .note-content p { margin-bottom: 6pt; }
+        .paper-dots, .paper-grid, .paper-ruled, .paper-engineering { background-image: none !important; background-color: ${isDark ? '#1e293b' : '#f8fafc'} !important; border: 1px solid ${isDark ? '#334155' : '#e2e8f0'} !important; border-radius: 10px !important; padding: 12px !important; }
+        .synthesis-card-wrapper, .qa-board-wrapper { border: 1.5px solid ${isDark ? '#334155' : '#e2e8f0'} !important; border-radius: 12px !important; padding: 12px 14px !important; margin: 8px 0 !important; background-color: ${isDark ? '#1e293b' : '#f8fafc'} !important; color: ${textColor} !important; }
+        table { width: 100% !important; border-collapse: collapse; margin: 12px 0; }
+        th, td { border: 1px solid ${isDark ? '#334155' : '#e2e8f0'}; padding: 8px; }
         th { background-color: ${isDark ? '#1e293b' : '#f8fafc'}; font-weight: bold; color: ${isDark ? '#ffffff' : '#000000'}; }
       `;
     }
@@ -253,22 +253,22 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     exportContainer.style.pointerEvents = 'none';
     exportContainer.style.width = '1200px';
     exportContainer.style.boxSizing = 'border-box';
-    exportContainer.style.padding = '40px';
+    exportContainer.style.padding = '20px';
     exportContainer.style.backgroundColor = bgColor;
     exportContainer.style.color = textColor;
     exportContainer.style.fontFamily = fontFamilyRule;
     
     exportContainer.innerHTML = `
       ${customHeaderHtml}
-      <div class="note-content" style="line-height: 1.6; font-size: 11.5pt;">
+      <div class="note-content" style="line-height: 1.5; font-size: 11pt;">
         ${editorRef.current.innerHTML}
       </div>
       ${customFooterHtml}
       <style>
         ${fontImports ? fontImports : ''}
         @page {
-          size: A4;
-          margin: 1in;
+          size: A4 landscape;
+          margin: 0 !important;
         }
         body {
           background-color: ${bgColor} !important;
@@ -296,12 +296,37 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
         .flex { display: flex !important; }
         .grid { display: grid !important; }
 
+        /* Compress massive tailwind paddings, margins, and gaps for elegant PDF output sheets */
+        .note-content [class*="p-8"], .note-content [class*="p-12"], .note-content [class*="p-10"], .note-content [class*="p-6"], .note-content [class*="p-16"],
+        .note-content [class*="py-8"], .note-content [class*="py-12"], .note-content [class*="py-10"], .note-content [class*="py-16"],
+        .note-content [class*="px-8"], .note-content [class*="px-12"], .note-content [class*="px-10"] {
+          padding: 12px 14px !important;
+        }
+        .note-content [class*="my-8"], .note-content [class*="my-12"], .note-content [class*="my-10"], .note-content [class*="my-16"] {
+          margin-top: 8px !important;
+          margin-bottom: 8px !important;
+        }
+        .note-content [class*="mt-8"], .note-content [class*="mt-12"], .note-content [class*="mt-10"], .note-content [class*="mt-16"] {
+          margin-top: 8px !important;
+        }
+        .note-content [class*="mb-8"], .note-content [class*="mb-12"], .note-content [class*="mb-10"], .note-content [class*="mb-16"] {
+          margin-bottom: 8px !important;
+        }
+        .note-content [class*="gap-8"], .note-content [class*="gap-12"], .note-content [class*="gap-10"], .note-content [class*="gap-6"] {
+          gap: 12px !important;
+        }
+        .note-content [class*="space-y-8"] > :not([hidden]) ~ :not([hidden]),
+        .note-content [class*="space-y-12"] > :not([hidden]) ~ :not([hidden]),
+        .note-content [class*="space-y-6"] > :not([hidden]) ~ :not([hidden]) {
+          margin-top: 8px !important;
+        }
+
         ${customContentStyles}
       </style>
     `;
 
     const opt = {
-      margin:       [12.7, 12.7, 12.7, 12.7] as [number, number, number, number], // 0.5 inches margin on all sides
+      margin:       [8, 8, 8, 8] as [number, number, number, number], // Thin elegant margins to maximize content space per page
       filename:     `${activeTopic.title || 'Notes'}.pdf`,
       image:        { type: 'jpeg' as const, quality: 0.98 },
       html2canvas:  { 
@@ -314,7 +339,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
         backgroundColor: bgColor
       },
       jsPDF:        { unit: 'mm' as const, format: 'a4' as const, orientation: 'landscape' as const },
-      pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
+      pagebreak:    { mode: ['css', 'legacy'] }
     };
 
     // Show full-screen loading spinner/overlay to hide the print generation process

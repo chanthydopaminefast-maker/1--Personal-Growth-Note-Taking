@@ -371,25 +371,25 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
       fontFamilyRule = "'Inter', system-ui, -apple-system, sans-serif";
 
       customHeaderHtml = `
-        <div style="margin-bottom: 35px; border-bottom: 3px solid ${accentColor}; padding-bottom: 25px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
-          <div style="font-size: 8pt; font-weight: 950; color: ${accentColor}; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 12px; font-family: 'Inter', sans-serif;">Identity Mastery System</div>
-          <h1 style="font-size: 28pt; font-weight: 900; color: #0f172a; margin: 0; padding: 0; line-height: 1.15; letter-spacing: -0.025em; text-align: center; font-family: 'Inter', sans-serif;">${selectedTopic.title}</h1>
-          <p style="font-size: 9pt; color: #64748b; text-transform: uppercase; letter-spacing: 2px; margin-top: 12px; font-weight: 700; margin-bottom: 0; font-family: 'Inter', sans-serif;">Performance Documentation • ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+        <div style="margin-bottom: 12px; border-bottom: 2px solid ${accentColor}; padding-bottom: 8px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+          <div style="font-size: 8pt; font-weight: 950; color: ${accentColor}; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 4px; font-family: 'Inter', sans-serif;">Identity Mastery System</div>
+          <h1 style="font-size: 18pt; font-weight: 900; color: #0f172a; margin: 0; padding: 0; line-height: 1.15; letter-spacing: -0.025em; text-align: center; font-family: 'Inter', sans-serif;">${selectedTopic.title}</h1>
+          <p style="font-size: 8.5pt; color: #64748b; text-transform: uppercase; letter-spacing: 2px; margin-top: 4px; font-weight: 700; margin-bottom: 0; font-family: 'Inter', sans-serif;">Performance Documentation • ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
         </div>
       `;
 
       customContentStyles = `
         .export-content { line-height: 1.5; font-size: 11pt; color: ${textColor} !important; }
-        .export-content p { margin-bottom: 0.8em; }
-        .export-content h1, .export-content h2, .export-content h3 { font-weight: 800; color: #0f172a !important; margin-top: 1.2em; margin-bottom: 0.4em; }
-        .export-content table { width: 100%; border-collapse: collapse; margin: 15px 0; }
-        .export-content th, .export-content td { border: 1px solid #e2e8f0; padding: 10px; color: ${textColor} !important; }
+        .export-content p { margin-bottom: 6pt; }
+        .export-content h1, .export-content h2, .export-content h3 { font-weight: 800; color: #0f172a !important; margin-top: 10pt; margin-bottom: 5pt; }
+        .export-content table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+        .export-content th, .export-content td { border: 1px solid #e2e8f0; padding: 8px; color: ${textColor} !important; }
         .synthesis-card-wrapper, .qa-board-wrapper { 
-          border: 2.5px solid #cbd5e1 !important; 
+          border: 1.5px solid #cbd5e1 !important; 
           background-color: #f8fafc !important; 
-          border-radius: 16px !important; 
-          padding: 18px !important; 
-          margin: 15px 0 !important; 
+          border-radius: 12px !important; 
+          padding: 12px 14px !important; 
+          margin: 8px 0 !important; 
           color: ${textColor} !important;
           box-shadow: none !important;
         }
@@ -397,8 +397,8 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
           background-image: none !important; 
           background-color: #f8fafc !important; 
           border: 1px solid #e2e8f0 !important; 
-          border-radius: 12px !important; 
-          padding: 15px !important; 
+          border-radius: 10px !important; 
+          padding: 12px !important; 
         }
       `;
     }
@@ -411,7 +411,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
     exportContainer.style.pointerEvents = 'none';
     exportContainer.style.width = '1200px'; 
     exportContainer.style.boxSizing = 'border-box';
-    exportContainer.style.padding = '40px';
+    exportContainer.style.padding = '20px';
     exportContainer.style.backgroundColor = bgColor;
     exportContainer.style.color = textColor;
     exportContainer.style.fontFamily = fontFamilyRule;
@@ -420,7 +420,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
     exportContainer.innerHTML = `
       <div style="padding: 10px; box-sizing: border-box;">
         ${customHeaderHtml}
-        <div class="export-content" style="line-height: 1.5; font-size: 11.5pt; max-width: 100% !important;">
+        <div class="export-content" style="line-height: 1.5; font-size: 11pt; max-width: 100% !important;">
           ${editorRef.current.innerHTML}
         </div>
         ${customFooterHtml}
@@ -433,7 +433,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
       ${fontImports ? fontImports : ''}
       @page {
         size: A4 landscape;
-        margin: 10mm;
+        margin: 0 !important;
       }
       * {
         box-sizing: border-box !important;
@@ -465,6 +465,31 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
       .flex { display: flex !important; }
       .grid { display: grid !important; }
 
+      /* Compress massive tailwind paddings, margins, and gaps for elegant PDF output sheets */
+      .export-content [class*="p-8"], .export-content [class*="p-12"], .export-content [class*="p-10"], .export-content [class*="p-6"], .export-content [class*="p-16"],
+      .export-content [class*="py-8"], .export-content [class*="py-12"], .export-content [class*="py-10"], .export-content [class*="py-16"],
+      .export-content [class*="px-8"], .export-content [class*="px-12"], .export-content [class*="px-10"] {
+        padding: 12px 14px !important;
+      }
+      .export-content [class*="my-8"], .export-content [class*="my-12"], .export-content [class*="my-10"], .export-content [class*="my-16"] {
+        margin-top: 8px !important;
+        margin-bottom: 8px !important;
+      }
+      .export-content [class*="mt-8"], .export-content [class*="mt-12"], .export-content [class*="mt-10"], .export-content [class*="mt-16"] {
+        margin-top: 8px !important;
+      }
+      .export-content [class*="mb-8"], .export-content [class*="mb-12"], .export-content [class*="mb-10"], .export-content [class*="mb-16"] {
+        margin-bottom: 8px !important;
+      }
+      .export-content [class*="gap-8"], .export-content [class*="gap-12"], .export-content [class*="gap-10"], .export-content [class*="gap-6"] {
+        gap: 12px !important;
+      }
+      .export-content [class*="space-y-8"] > :not([hidden]) ~ :not([hidden]),
+      .export-content [class*="space-y-12"] > :not([hidden]) ~ :not([hidden]),
+      .export-content [class*="space-y-6"] > :not([hidden]) ~ :not([hidden]) {
+        margin-top: 8px !important;
+      }
+
       ${customContentStyles}
       
       .bg-white\/10, .bg-white\\/10 {
@@ -477,7 +502,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
         display: flex !important;
         flex-direction: row !important;
         flex-wrap: wrap !important;
-        gap: 15px !important;
+        gap: 12px !important;
         width: 100% !important;
         max-width: 100% !important;
         box-sizing: border-box !important;
@@ -488,7 +513,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
         display: flex !important;
         flex-direction: row !important;
         flex-wrap: wrap !important;
-        gap: 15px !important;
+        gap: 12px !important;
         width: 100% !important;
       }
       .grid-cols-3 > div, .grid-cols-3 > section,
@@ -500,7 +525,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
         max-width: 31.5% !important;
         min-width: 31.5% !important;
         box-sizing: border-box !important;
-        margin-bottom: 15px !important;
+        margin-bottom: 12px !important;
       }
       
       /* Target 2 columns */
@@ -508,7 +533,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
         display: flex !important;
         flex-direction: row !important;
         flex-wrap: wrap !important;
-        gap: 20px !important;
+        gap: 16px !important;
         width: 100% !important;
       }
       .grid-cols-2 > div, .grid-cols-2 > section,
@@ -520,7 +545,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
         max-width: 48% !important;
         min-width: 48% !important;
         box-sizing: border-box !important;
-        margin-bottom: 15px !important;
+        margin-bottom: 12px !important;
       }
 
       /* Target 4 columns - Wrap them into 2x2 for readable presentation */
@@ -528,7 +553,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
         display: flex !important;
         flex-direction: row !important;
         flex-wrap: wrap !important;
-        gap: 20px !important;
+        gap: 16px !important;
         width: 100% !important;
       }
       .grid-cols-4 > div, .grid-cols-4 > section,
@@ -540,13 +565,13 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
         max-width: 48% !important;
         min-width: 48% !important;
         box-sizing: border-box !important;
-        margin-bottom: 15px !important;
+        margin-bottom: 12px !important;
       }
     `;
     exportContainer.appendChild(style);
 
     const opt = {
-      margin:       [12.7, 12.7, 12.7, 12.7] as [number, number, number, number], // 0.5 inches margin on all sides
+      margin:       [8, 8, 8, 8] as [number, number, number, number], // Thin elegant margins to maximize content space per page
       filename:     `${selectedTopic.title || 'Performance-Log'}.pdf`,
       image:        { type: 'jpeg' as const, quality: 0.98 },
       html2canvas:  { 
@@ -559,7 +584,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
         backgroundColor: bgColor
       },
       jsPDF:        { unit: 'mm' as const, format: 'a4' as const, orientation: 'landscape' as const },
-      pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
+      pagebreak:    { mode: ['css', 'legacy'] }
     };
 
     // Show full-screen loading spinner/overlay to hide the print generation process
