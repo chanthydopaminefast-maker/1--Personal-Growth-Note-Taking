@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Zap, Plus, Trash2, Calendar, AlignLeft, AlignCenter, AlignRight, Highlighter, MousePointer2, Minus, Layout, Square, Quote, Settings2, FileUp, FileDown, Image as ImageIcon, Video, Music, FileText, Loader2, Wand2, Menu, ChevronLeft, GraduationCap, ChevronRight, Table, Grid3X3, Columns, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Palette, Italic, Underline, Strikethrough, Indent, Outdent, List, ListOrdered, CheckSquare, ChevronDown, MoreHorizontal, Download, Maximize2, Minimize2, Search, Archive, Folder, Star, Share2, Pencil } from 'lucide-react';
+import { Zap, Plus, Trash2, Calendar, AlignLeft, AlignCenter, AlignRight, Highlighter, MousePointer2, Minus, Layout, Square, Quote, Settings2, FileUp, FileDown, Image as ImageIcon, Video, Music, FileText, Loader2, Wand2, Menu, ChevronLeft, GraduationCap, ChevronRight, Table, Grid3X3, Columns, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Palette, Italic, Underline, Strikethrough, Indent, Outdent, List, ListOrdered, CheckSquare, ChevronDown, MoreHorizontal, Download, Maximize2, Minimize2, Search, Archive, Folder, Star, Share2, Pencil, Lock, Unlock, ArrowRightLeft } from 'lucide-react';
 import { AppData, DPSSTopic } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { callNeuralEngine } from '../services/neuralEngine';
@@ -17,6 +17,7 @@ interface SelfLearningTableProps {
 
 export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUpdate, onUpdateTopic, onOpenSidebar }) => {
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [forceLightBg, setForceLightBg] = useState<boolean>(() => {
     const saved = localStorage.getItem('self_learning_plain_light');
     return saved === null ? true : saved === 'true';
@@ -1375,24 +1376,50 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
   };
 
   const deleteTopic = (id: string) => {
-    if (confirm('Move this topic to Recycle Bin?')) {
-      const markDeleted = (items: DPSSTopic[]): DPSSTopic[] => {
-        return items.map(item => {
-          if (item.id === id) return { ...item, deletedAt: new Date().toISOString() };
-          if (item.children) return { ...item, children: markDeleted(item.children) };
-          return item;
-        });
-      };
-      const updatedData = markDeleted(data.selfLearningTopics || []);
-      const root = findRootTopic(data.selfLearningTopics || [], id); // Find root in old data to know which doc to update
-      
-      const updatedRoot = root ? findRootTopic(updatedData, root.id) : null;
-
-      if (onUpdateTopic) {
-        onUpdateTopic(updatedData, updatedRoot || undefined);
-      } else {
-        onUpdate({ ...data, selfLearningTopics: updatedData });
+    const findSpecificTopic = (items: DPSSTopic[], searchId: string): DPSSTopic | null => {
+       for (const item of items) {
+         if (item.id === searchId) return item;
+         if (item.children) {
+           const found = findSpecificTopic(item.children, searchId);
+           if (found) return found;
+         }
+       }
+       return null;
+    };
+    
+    const topicToDelete = findSpecificTopic(data.selfLearningTopics || [], id);
+    if (!topicToDelete) return;
+    
+    if (topicToDelete.isLocked) {
+      const userInput = prompt(`This folder/document is LOCKED.\nTo delete it, you must type the word "Delete" exactly:`);
+      if (userInput !== "Delete") {
+        if (userInput !== null) alert("Incorrect verification word. Deletion cancelled.");
+        return;
       }
+    } else {
+      if (!confirm('Move this topic to Recycle Bin? OK / Cancel')) {
+        return;
+      }
+    }
+
+    const markDeleted = (items: DPSSTopic[]): DPSSTopic[] => {
+      return items.map(item => {
+        if (item.id === id) return { ...item, deletedAt: new Date().toISOString() };
+        if (item.children) return { ...item, children: markDeleted(item.children) };
+        return item;
+      });
+    };
+    const updatedData = markDeleted(data.selfLearningTopics || []);
+    const root = findRootTopic(data.selfLearningTopics || [], id); // Find root in old data to know which doc to update
+    
+    const updatedRoot = root ? findRootTopic(updatedData, root.id) : null;
+
+    if (onUpdateTopic) {
+      onUpdateTopic(updatedData, updatedRoot || undefined);
+    } else {
+      onUpdate({ ...data, selfLearningTopics: updatedData });
+    }
+    if (selectedTopicId === id) {
       setSelectedTopicId(null);
     }
   };
@@ -2589,6 +2616,76 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
     }
   };
 
+  const moveTopicToNoteTaking = async (topicToMove: DPSSTopic) => {
+    if (topicToMove.isLocked) {
+      const userInput = prompt(`This folder/document is LOCKED.\nTo move it, you must type the word "Move" exactly:`);
+      if (userInput !== "Move") {
+        if (userInput !== null) alert("Incorrect verification word. Move cancelled.");
+        return;
+      }
+    } else {
+      if (!confirm('Move this folder/document to Note-Taking? OK / Cancel')) {
+        return;
+      }
+    }
+
+    const markDeleted = (items: DPSSTopic[]): DPSSTopic[] => {
+      return items.map(item => {
+        if (item.id === topicToMove.id) return { ...item, deletedAt: new Date().toISOString() };
+        if (item.children) return { ...item, children: markDeleted(item.children) };
+        return item;
+      });
+    };
+    const updatedSLTopics = markDeleted(data.selfLearningTopics || []);
+
+    const cloneTopicWithNewIds = (topic: any): any => {
+      const newId = uuidv4();
+      return {
+        ...topic,
+        id: newId,
+        children: topic.children ? topic.children.map(cloneTopicWithNewIds) : undefined
+      };
+    };
+    const clonedTopic = cloneTopicWithNewIds(topicToMove);
+
+    const currentDpssTopics = data.dpssTopics || [];
+    const updatedDpssTopics = [...currentDpssTopics, clonedTopic];
+
+    if (onUpdateTopic) {
+      const root = findRootTopic(data.selfLearningTopics || [], topicToMove.id);
+      const updatedRoot = root ? findRootTopic(updatedSLTopics, root.id) : null;
+      onUpdateTopic(updatedSLTopics, updatedRoot || undefined);
+    } else {
+      onUpdate({
+        ...data,
+        selfLearningTopics: updatedSLTopics,
+        dpssTopics: updatedDpssTopics
+      });
+    }
+
+    if (selectedTopicId === topicToMove.id) {
+       setSelectedTopicId(null);
+    }
+
+    import('../services/firebase').then(({ saveTopic }) => {
+      const storedUser = localStorage.getItem('dps_user');
+      if (storedUser) {
+        try {
+          const u = JSON.parse(storedUser);
+          if (u.uid) {
+            saveTopic(u.uid, clonedTopic, 'dpss');
+            
+            const root = findRootTopic(data.selfLearningTopics || [], topicToMove.id);
+            if (root) {
+              const updatedRoot = findRootTopic(updatedSLTopics, root.id);
+              if (updatedRoot) saveTopic(u.uid, updatedRoot, 'selfLearning');
+            }
+          }
+        } catch(e){}
+      }
+    });
+  };
+
   const renderTopic = (topic: DPSSTopic, depth = 0) => {
     const isPlan = topic.title.trim().toLowerCase().startsWith('🎯') || 
                    topic.title.trim().toLowerCase().startsWith('⚡') || 
@@ -2604,6 +2701,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
         <div 
           onClick={() => {
             setSelectedTopicId(topic.id);
+            setOpenMenuId(null);
             if (hasChildren) {
               setExpandedTopics(prev => ({ ...prev, [topic.id]: !prev[topic.id] }));
             }
@@ -2669,57 +2767,104 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
             )}
           </div>
 
-          <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-              <button 
-                onClick={(e) => { e.stopPropagation(); addTopic(topic.id); }} 
-                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-500 hover:text-emerald-600 transition-all"
-                title="Add nesting sub-topic"
-              >
-                <Plus size={13} />
-              </button>
-              
-              <button 
-                onClick={(e) => { 
-                  e.stopPropagation(); 
-                  setEditingTopicId(topic.id); 
-                  setEditingTopicTitle(topic.title); 
-                }} 
-                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-emerald-500 transition-all"
-                title="Rename Topic"
-              >
-                <Pencil size={13} />
-              </button>
-              
-              <button 
-                onClick={(e) => { 
-                  e.stopPropagation(); 
-                  updateTopic(topic.id, { isArchived: !topic.isArchived });
-                }} 
-                className={`p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-all ${topic.isArchived ? 'text-amber-500' : 'text-slate-400 hover:text-amber-500'}`}
-                title={topic.isArchived ? "Remove from Favorite Stars" : "Add to Favorite Stars"}
-              >
-                <Star size={13} fill={topic.isArchived ? "currentColor" : "none"} />
-              </button>
+          <div className="flex gap-1 shrink-0">
+            {isSelected && (
+              <div className="relative shrink-0">
+                <button 
+                  onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === topic.id ? null : topic.id); }}
+                  className={`p-1.5 rounded transition-all flex items-center ${openMenuId === topic.id ? 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+                  title="More Options"
+                >
+                  <MoreHorizontal size={15} />
+                </button>
+                
+                {openMenuId === topic.id && (
+                  <div className="absolute right-0 top-full mt-2 bg-white dark:bg-slate-800 shadow-xl rounded-xl border border-slate-200 dark:border-slate-700 py-1.5 flex flex-col min-w-[160px] z-[100]"
+                       onClick={e => e.stopPropagation()}
+                  >
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); addTopic(topic.id); setOpenMenuId(null); }} 
+                      className="w-full text-left flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors text-xs"
+                    >
+                      <Plus size={14} className="text-emerald-500" />
+                      Add Sub-topic
+                    </button>
+                    
+                    <button 
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        setEditingTopicId(topic.id); 
+                        setEditingTopicTitle(topic.title);
+                        setOpenMenuId(null); 
+                      }} 
+                      className="w-full text-left flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors text-xs"
+                    >
+                      <Pencil size={14} className="text-emerald-500" />
+                      Edit Title
+                    </button>
+                    
+                    <button 
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        updateTopic(topic.id, { isArchived: !topic.isArchived });
+                        setOpenMenuId(null);
+                      }} 
+                      className="w-full text-left flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors text-xs"
+                    >
+                      <Star size={14} className={topic.isArchived ? "text-amber-500" : "text-slate-400"} fill={topic.isArchived ? "currentColor" : "none"} />
+                      {topic.isArchived ? "Unfavorite" : "Favorite"}
+                    </button>
 
-              <button 
-                onClick={(e) => { 
-                  e.stopPropagation(); 
-                  handleShareTopic(topic);
-                }} 
-                disabled={sharingTopicId === topic.id}
-                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-400 hover:text-orange-500 transition-all disabled:opacity-40"
-                title="Share Topic Link (Email / Copy)"
-              >
-                <Share2 size={13} className={sharingTopicId === topic.id ? "animate-spin" : ""} />
-              </button>
+                    <button 
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        updateTopic(topic.id, { isLocked: !topic.isLocked });
+                        setOpenMenuId(null);
+                      }} 
+                      className="w-full text-left flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors text-xs"
+                    >
+                      {topic.isLocked ? <Lock size={14} className="text-red-500" /> : <Unlock size={14} className="text-blue-500" />}
+                      {topic.isLocked ? "Unlock Document" : "Lock from Deletion"}
+                    </button>
 
-              <button 
-                onClick={(e) => { e.stopPropagation(); deleteTopic(topic.id); }} 
-                className="p-1 hover:bg-red-50/50 dark:hover:bg-red-950/20 rounded text-slate-400 hover:text-red-500 transition-all"
-                title="Delete Topic"
-              >
-                <Trash2 size={13} />
-              </button>
+                    <button 
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        handleShareTopic(topic);
+                        setOpenMenuId(null);
+                      }} 
+                      disabled={sharingTopicId === topic.id}
+                      className="w-full text-left flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors text-xs disabled:opacity-40"
+                    >
+                      <Share2 size={14} className={sharingTopicId === topic.id ? "animate-spin text-orange-500" : "text-orange-500"} />
+                      Share
+                    </button>
+
+                    <button 
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        moveTopicToNoteTaking(topic);
+                        setOpenMenuId(null);
+                      }} 
+                      className="w-full text-left flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors text-xs"
+                    >
+                      <ArrowRightLeft size={14} className="text-indigo-500" />
+                      Move to Note-Taking
+                    </button>
+
+                    <div className="h-px bg-slate-100 dark:bg-slate-700 my-1 mx-2" />
+
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); setOpenMenuId(null); deleteTopic(topic.id); }} 
+                      className="w-full text-left flex items-center gap-2 px-3 py-1.5 hover:bg-red-50 dark:hover:bg-red-950/30 text-red-600 dark:text-red-400 transition-colors text-xs"
+                    >
+                      <Trash2 size={14} />
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
         

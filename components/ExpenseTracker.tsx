@@ -1305,6 +1305,7 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
 
   return (
     <div className="expense-tracker-container flex-1 flex flex-col h-full bg-white/[0.005] backdrop-blur-3xl p-3 md:p-6 overflow-y-auto md:overflow-hidden font-sans">
+      <div className="w-full lg:w-[80%] max-w-7xl mx-auto flex flex-col h-full">
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-4 gap-4">
         <div>
           <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase italic flex items-center gap-3 drop-shadow-sm">
@@ -2518,6 +2519,7 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
         >
           <Plus size={28} />
         </motion.button>
+      </div>
       </div>
 
       <style>{`

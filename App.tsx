@@ -189,7 +189,7 @@ const App: React.FC = () => {
 
     const { type, payload } = sharedNoteData;
 
-    if (type === 'self-learning') {
+    if (type === 'self-learning' || type === 'note-taking' || type === 'dpss') {
       const cloneTopicWithNewIds = (topic: any): any => {
         const newId = uuidv4();
         return {
@@ -200,18 +200,30 @@ const App: React.FC = () => {
       };
 
       const clonedTopic = cloneTopicWithNewIds(payload);
-      const currentTopics = data.selfLearningTopics || [];
-      const updatedTopics = [...currentTopics, clonedTopic];
-
-      handleUpdate({ ...data, selfLearningTopics: updatedTopics });
       
-      import('./services/firebase').then(({ saveTopic }) => {
-        if (currentUser?.uid) {
-          saveTopic(currentUser.uid, clonedTopic, 'selfLearning');
-        }
-      });
-      
-      setShareFeedbackMessage("Successfully imported to your Self-learning topics!");
+      if (type === 'dpss' || type === 'note-taking') {
+        const currentTopics = data.dpssTopics || [];
+        const updatedTopics = [...currentTopics, clonedTopic];
+        handleUpdate({ ...data, dpssTopics: updatedTopics });
+        
+        import('./services/firebase').then(({ saveTopic }) => {
+          if (currentUser?.uid) {
+            saveTopic(currentUser.uid, clonedTopic, 'dpss');
+          }
+        });
+        setShareFeedbackMessage("Successfully imported to your Note-taking topics!");
+      } else {
+        const currentTopics = data.selfLearningTopics || [];
+        const updatedTopics = [...currentTopics, clonedTopic];
+        handleUpdate({ ...data, selfLearningTopics: updatedTopics });
+        
+        import('./services/firebase').then(({ saveTopic }) => {
+          if (currentUser?.uid) {
+            saveTopic(currentUser.uid, clonedTopic, 'selfLearning');
+          }
+        });
+        setShareFeedbackMessage("Successfully imported to your Self-learning topics!");
+      }
 
     } else if (type === 'journal') {
       const entry = payload.entry || payload;

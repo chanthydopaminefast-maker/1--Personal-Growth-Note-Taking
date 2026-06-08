@@ -122,6 +122,7 @@ export interface DPSSTopic {
   children?: DPSSTopic[];
   attachments?: { id: string; name: string; url: string; type: string }[];
   isArchived?: boolean;
+  isLocked?: boolean;
 }
 
 export interface Habit {
