@@ -134,7 +134,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       <aside 
         className={`fixed md:relative h-full z-50 md:z-40 bg-white/[0.02] backdrop-blur-md border-r border-white/10 text-slate-900 flex flex-col transition-all duration-300 ease-in-out overflow-hidden shadow-2xl no-print shrink-0 ${
-          isOpen ? 'w-80 translate-x-0' : 'w-0 -translate-x-full md:translate-x-0 overflow-hidden'
+          isOpen ? 'w-[300px] translate-x-0' : 'w-0 -translate-x-full md:translate-x-0 overflow-hidden'
         }`}
       >
         {/* Branding Area with Collapse Toggle */}

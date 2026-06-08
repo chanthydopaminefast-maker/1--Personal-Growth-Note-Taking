@@ -120,7 +120,7 @@ const App: React.FC = () => {
   const [history, setHistory] = useState<AppData[]>([]);
   const [redoStack, setRedoStack] = useState<AppData[]>([]);
 
-  const [activeTab, setActiveTab] = useState<Tab>(Tab.HabitTracker);
+  const [activeTab, setActiveTab] = useState<Tab>(Tab.SelfLearning);
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth > 768);
   const [isAiOpen, setIsAiOpen] = useState(false);
   const [isContactsOpen, setIsContactsOpen] = useState(false);

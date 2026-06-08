@@ -1767,7 +1767,7 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
                                                       value={inlineInputs[cat] || ''}
                                                       onChange={(e) => setInlineInputs({...inlineInputs, [cat]: e.target.value})}
                                                       onKeyDown={(e) => e.key === 'Enter' && handleInlineAdd(cat)}
-                                                      className="w-20 sm:w-28 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl py-1.5 px-3 text-right text-xs font-black outline-none placeholder:text-slate-350 dark:placeholder:text-slate-650 transition-all focus:border-amber-500 focus:bg-white text-slate-900 dark:text-slate-150 shadow-inner"
+                                                      className="w-24 sm:w-32 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl py-1.5 px-3 text-right text-xs font-black outline-none placeholder:text-slate-350 dark:placeholder:text-slate-650 transition-all focus:border-amber-500 focus:bg-white text-slate-900 dark:text-slate-150 shadow-inner"
                                                     />
                                                 </div>
                                                 {hasInput && (

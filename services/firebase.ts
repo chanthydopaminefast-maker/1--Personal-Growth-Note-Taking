@@ -701,7 +701,7 @@ const sanitizeForFirestore = (obj: any): any => {
 export const createSharedNote = async (
   userId: string,
   ownerName: string,
-  type: 'self-learning' | 'journal' | 'daily-note',
+  type: 'self-learning' | 'journal' | 'daily-note' | 'note-taking',
   title: string,
   payload: any
 ): Promise<string> => {

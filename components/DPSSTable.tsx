@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Plus, Trash2, Calendar, AlignLeft, AlignCenter, AlignRight, Highlighter, Type, Settings2, MousePointer2, Minus, Layout, Square, Quote, FileUp, FileDown, Loader2, Wand2, Menu, ChevronLeft, FileText, ChevronDown, ChevronRight, Table, Grid3X3, Columns, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Palette, Italic, Underline, Strikethrough, Indent, Outdent, List, ListOrdered, CheckSquare, MoreHorizontal, Download, Maximize2, Minimize2, Search, Archive, Folder, Star, Share2, Pencil, Lock, Unlock, ArrowRightLeft } from 'lucide-react';
+import { Plus, Trash2, Calendar, AlignLeft, AlignCenter, AlignRight, Highlighter, Type, Settings2, MousePointer2, Minus, Layout, Square, Quote, FileUp, FileDown, Loader2, Wand2, Menu, ChevronLeft, FileText, ChevronDown, ChevronRight, Table, Grid3X3, Columns, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Palette, Italic, Underline, Strikethrough, Indent, Outdent, List, ListOrdered, CheckSquare, MoreHorizontal, Download, Maximize2, Minimize2, Search, Archive, Folder, Star, Share2, Pencil, Lock, Unlock, ArrowRightLeft, GraduationCap } from 'lucide-react';
 import { AppData, DPSSTopic } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { callNeuralEngine } from '../services/neuralEngine';
@@ -16,6 +16,10 @@ interface DPSSTableProps {
 
 export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTopic, onOpenSidebar }) => {
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
+  const [forceLightBg, setForceLightBg] = useState<boolean>(() => {
+    const saved = localStorage.getItem('dpss_plain_light');
+    return saved === null ? true : saved === 'true';
+  });
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [sharingTopicId, setSharingTopicId] = useState<string | null>(null);
   const [generatedShareLink, setGeneratedShareLink] = useState<string | null>(null);
@@ -52,6 +56,10 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
   useEffect(() => {
     localStorage.setItem('gportal_dpss_sidebar_width', sidebarWidth.toString());
   }, [sidebarWidth]);
+
+  useEffect(() => {
+    localStorage.setItem('dpss_plain_light', String(forceLightBg));
+  }, [forceLightBg]);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedTopics, setExpandedTopics] = useState<Record<string, boolean>>({});
@@ -1155,6 +1163,10 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       document.execCommand('foreColor', false, color);
     }
     
+    if (selectedTopic?.id && editorRef.current) {
+      updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+    }
+    
     // Cleanup
     selection.removeAllRanges();
     if (!selectionProvided) {
@@ -1177,6 +1189,10 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       document.execCommand('removeFormat', false, undefined);
     } else {
       document.execCommand('backColor', false, color);
+    }
+    
+    if (selectedTopic?.id && editorRef.current) {
+      updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
     }
     
     // Cleanup
@@ -3002,6 +3018,19 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                           <span className="hidden sm:inline">Share</span>
                         </button>
                       )}
+
+                      <button
+                        onClick={() => setForceLightBg(!forceLightBg)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-xs font-bold shadow-sm transition-all font-sans shrink-0 cursor-pointer ${
+                          forceLightBg 
+                            ? 'bg-emerald-500 border-emerald-600 text-white hover:bg-emerald-600 shadow-md shadow-emerald-500/20' 
+                            : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
+                        }`}
+                        title={forceLightBg ? "Switch back to default/glass background design" : "Switch to plain high-contrast light background"}
+                      >
+                        <GraduationCap size={14} />
+                        <span>Plain Light: {forceLightBg ? "ON" : "OFF"}</span>
+                      </button>
                       <button 
                         onClick={enhanceWithAI} 
                         onMouseDown={(e) => e.preventDefault()}
@@ -3451,7 +3480,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                   const editorTextColor = '#1e293b';
                   const editorHeaderColor = '#0f172a';
                   const editorBorderColor = '#cbd5e1';
-                  const editorCardBgColor = '#f1f5f9';
+                  const editorCardBgColor = forceLightBg ? '#ffffff' : 'rgba(255, 255, 255, 0.95)';
                   
                   return (
                     <style dangerouslySetInnerHTML={{ __html: `
@@ -3544,24 +3573,29 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                       .editor-content [class*="bg-stone-8"],
                       .editor-content [class*="bg-stone-9"],
                       .editor-content [class*="bg-[#0"],
-                      .editor-content [class*="bg-[#1"] {
-                        background-color: transparent !important;
-                        background: transparent !important;
+                      .editor-content [class*="bg-[#1"],
+                      .editor-content [class*="bg-[#2"],
+                      .editor-content [class*="bg-[#3]"] {
+                        background-color: ${editorCardBgColor} !important;
+                        background: ${editorCardBgColor} !important;
                         color: ${editorTextColor} !important;
-                        border: 1px solid ${editorBorderColor} !important;
+                        border: 1.5px solid ${editorBorderColor} !important;
+                        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important;
                       }
 
-                      .editor-content [class*="bg-black"] *,
-                      .editor-content [class*="bg-gray-8"] *,
-                      .editor-content [class*="bg-gray-9"] *,
-                      .editor-content [class*="bg-slate-8"] *,
-                      .editor-content [class*="bg-slate-9"] *,
-                      .editor-content [class*="bg-zinc-8"] *,
-                      .editor-content [class*="bg-zinc-9"] *,
-                      .editor-content [class*="bg-stone-8"] *,
-                      .editor-content [class*="bg-stone-9"] *,
-                      .editor-content [class*="bg-[#0"] *,
-                      .editor-content [class*="bg-[#1"] * {
+                      .editor-content [class*="bg-black"] *:not([style*="color"]):not([style*="background-color"]),
+                      .editor-content [class*="bg-gray-8"] *:not([style*="color"]):not([style*="background-color"]),
+                      .editor-content [class*="bg-gray-9"] *:not([style*="color"]):not([style*="background-color"]),
+                      .editor-content [class*="bg-slate-8"] *:not([style*="color"]):not([style*="background-color"]),
+                      .editor-content [class*="bg-slate-9"] *:not([style*="color"]):not([style*="background-color"]),
+                      .editor-content [class*="bg-zinc-8"] *:not([style*="color"]):not([style*="background-color"]),
+                      .editor-content [class*="bg-zinc-9"] *:not([style*="color"]):not([style*="background-color"]),
+                      .editor-content [class*="bg-stone-8"] *:not([style*="color"]):not([style*="background-color"]),
+                      .editor-content [class*="bg-stone-9"] *:not([style*="color"]):not([style*="background-color"]),
+                      .editor-content [class*="bg-[#0"] *:not([style*="color"]):not([style*="background-color"]),
+                      .editor-content [class*="bg-[#1"] *:not([style*="color"]):not([style*="background-color"]),
+                      .editor-content [class*="bg-[#2"] *:not([style*="color"]):not([style*="background-color"]),
+                      .editor-content [class*="bg-[#3"] * {
                         color: ${editorTextColor} !important;
                       }
 
@@ -3581,6 +3615,51 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                         padding-left: 20px !important;
                         margin-bottom: 10px !important;
                       }
+
+                      /* Custom overrides when Plain Light Paper Mode is forced by the user */
+                      ${forceLightBg ? `
+                        .editor-content {
+                          background-color: #fcfdfd !important;
+                          background-image: none !important;
+                          color: #1e293b !important;
+                        }
+                        
+                        /* Re-enforce highlighted span background and color when in Plain Light Mode */
+                        .editor-content [style*="background-color"] {
+                          color: inherit !important;
+                        }
+                        
+                        /* Ensure the card themes inside Plain Light look perfect */
+                        .editor-content .study-plan-card,
+                        .editor-content .action-plan-card,
+                        .editor-content .synthesis-card-wrapper,
+                        .editor-content .qa-board-wrapper,
+                        .editor-content [class*="bg-slate-7"],
+                        .editor-content [class*="bg-slate-8"],
+                        .editor-content [class*="bg-slate-9"],
+                        .editor-content [class*="bg-zinc-7"],
+                        .editor-content [class*="bg-zinc-8"],
+                        .editor-content [class*="bg-zinc-9"],
+                        .editor-content [class*="bg-stone-7"],
+                        .editor-content [class*="bg-stone-8"],
+                        .editor-content [class*="bg-stone-9"],
+                        .editor-content [class*="bg-neutral-7"],
+                        .editor-content [class*="bg-neutral-8"],
+                        .editor-content [class*="bg-neutral-9"],
+                        .editor-content [class*="bg-gray-7"],
+                        .editor-content [class*="bg-gray-8"],
+                        .editor-content [class*="bg-gray-9"],
+                        .editor-content [class*="bg-black"],
+                        .editor-content [class*="bg-[#0"],
+                        .editor-content [class*="bg-[#1"],
+                        .editor-content [class*="bg-[#2"],
+                        .editor-content [class*="bg-[#3"] {
+                          background-color: #ffffff !important;
+                          background: #ffffff !important;
+                          border: 1.5px solid #e2e8f0 !important;
+                          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important;
+                        }
+                      ` : ''}
                     ` }} />
                   );
                 })()}
@@ -3604,7 +3683,11 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                       fontSize: `${textFontSize}px`,
                       fontFamily: textFontFamily
                     }}
-                    className={`editor-content w-full flex-1 outline-none p-8 rounded-3xl text-slate-800 leading-relaxed font-medium transition-all focus:ring-4 focus:ring-orange-500/10 overflow-y-auto shadow-md ${selectedPaper.className}`}
+                    className={`editor-content w-full flex-1 outline-none p-8 rounded-3xl leading-relaxed font-medium transition-all focus:ring-4 focus:ring-orange-500/10 overflow-y-auto shadow-md ${
+                      forceLightBg
+                        ? 'bg-[#fcfdfd] border border-slate-200 text-slate-800 shadow-2xl'
+                        : selectedPaper.className
+                    }`}
                 ></div>
 
                 {isTableModalOpen && (

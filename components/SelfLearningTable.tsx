@@ -1295,6 +1295,10 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
       document.execCommand('foreColor', false, color);
     }
     
+    if (selectedTopic?.id && editorRef.current) {
+      updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+    }
+    
     selection.removeAllRanges();
     if (!selectionProvided) {
       savedRange.current = null;
@@ -1316,6 +1320,10 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
       document.execCommand('removeFormat', false, undefined);
     } else {
       document.execCommand('backColor', false, color);
+    }
+    
+    if (selectedTopic?.id && editorRef.current) {
+      updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
     }
     
     selection.removeAllRanges();
@@ -4007,11 +4015,6 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
                       .editor-content [class*="bg-[#1"],
                       .editor-content [class*="bg-[#2"],
                       .editor-content [class*="bg-[#3"],
-                      .editor-content [class*="bg-[#a"],
-                      .editor-content [class*="bg-[#b"],
-                      .editor-content [class*="bg-[#c"],
-                      .editor-content [class*="bg-[#d"],
-                      .editor-content [class*="bg-[#e"],
                       .editor-content [class*="bg-indigo-7"],
                       .editor-content [class*="bg-indigo-8"],
                       .editor-content [class*="bg-indigo-9"],
@@ -4045,20 +4048,21 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
                         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important;
                       }
 
-                      .editor-content [class*="bg-slate-7"] *, .editor-content [class*="bg-slate-8"] *, .editor-content [class*="bg-slate-9"] *,
-                      .editor-content [class*="bg-zinc-7"] *, .editor-content [class*="bg-zinc-8"] *, .editor-content [class*="bg-zinc-9"] *,
-                      .editor-content [class*="bg-stone-7"] *, .editor-content [class*="bg-stone-8"] *, .editor-content [class*="bg-stone-9"] *,
-                      .editor-content [class*="bg-neutral-7"] *, .editor-content [class*="bg-neutral-8"] *, .editor-content [class*="bg-neutral-9"] *,
-                      .editor-content [class*="bg-gray-7"] *, .editor-content [class*="bg-gray-8"] *, .editor-content [class*="bg-gray-9"] *,
-                      .editor-content [class*="bg-[#0"] *, .editor-content [class*="bg-[#1"] *, .editor-content [class*="bg-[#2"] *, .editor-content [class*="bg-[#3"] *,
-                      .editor-content [class*="bg-black"] *,
-                      .editor-content [class*="bg-indigo-7"] *, .editor-content [class*="bg-indigo-8"] *, .editor-content [class*="bg-indigo-9"] *,
-                      .editor-content [class*="bg-purple-7"] *, .editor-content [class*="bg-purple-8"] *, .editor-content [class*="bg-purple-9"] *,
-                      .editor-content [class*="bg-violet-7"] *, .editor-content [class*="bg-violet-8"] *, .editor-content [class*="bg-violet-9"] *,
-                      .editor-content [class*="bg-emerald-7"] *, .editor-content [class*="bg-emerald-8"] *, .editor-content [class*="bg-emerald-9"] *,
-                      .editor-content [class*="bg-rose-7"] *, .editor-content [class*="bg-rose-8"] *, .editor-content [class*="bg-rose-9"] *,
-                      .editor-content [class*="bg-teal-7"] *, .editor-content [class*="bg-teal-8"] *, .editor-content [class*="bg-teal-9"] *,
-                      .editor-content [class*="bg-cyan-7"] *, .editor-content [class*="bg-cyan-8"] *, .editor-content [class*="bg-cyan-9"] * {
+                      /* Preserve user elements with custom colors or text highlight when general dark card styling is stripped */
+                      .editor-content [class*="bg-slate-7"] *:not([style*="color"]):not([style*="background-color"]), .editor-content [class*="bg-slate-8"] *:not([style*="color"]):not([style*="background-color"]), .editor-content [class*="bg-slate-9"] *:not([style*="color"]):not([style*="background-color"]),
+                      .editor-content [class*="bg-zinc-7"] *:not([style*="color"]):not([style*="background-color"]), .editor-content [class*="bg-zinc-8"] *:not([style*="color"]):not([style*="background-color"]), .editor-content [class*="bg-zinc-9"] *:not([style*="color"]):not([style*="background-color"]),
+                      .editor-content [class*="bg-stone-7"] *:not([style*="color"]):not([style*="background-color"]), .editor-content [class*="bg-stone-8"] *:not([style*="color"]):not([style*="background-color"]), .editor-content [class*="bg-stone-9"] *:not([style*="color"]):not([style*="background-color"]),
+                      .editor-content [class*="bg-neutral-7"] *:not([style*="color"]):not([style*="background-color"]), .editor-content [class*="bg-neutral-8"] *:not([style*="color"]):not([style*="background-color"]), .editor-content [class*="bg-neutral-9"] *:not([style*="color"]):not([style*="background-color"]),
+                      .editor-content [class*="bg-gray-7"] *:not([style*="color"]):not([style*="background-color"]), .editor-content [class*="bg-gray-8"] *:not([style*="color"]):not([style*="background-color"]), .editor-content [class*="bg-gray-9"] *:not([style*="color"]):not([style*="background-color"]),
+                      .editor-content [class*="bg-[#0"] *:not([style*="color"]):not([style*="background-color"]), .editor-content [class*="bg-[#1"] *:not([style*="color"]):not([style*="background-color"]), .editor-content [class*="bg-[#2"] *:not([style*="color"]):not([style*="background-color"]), .editor-content [class*="bg-[#3"] *:not([style*="color"]):not([style*="background-color"]),
+                      .editor-content [class*="bg-black"] *:not([style*="color"]):not([style*="background-color"]),
+                      .editor-content [class*="bg-indigo-7"] *:not([style*="color"]):not([style*="background-color"]), .editor-content [class*="bg-indigo-8"] *:not([style*="color"]):not([style*="background-color"]), .editor-content [class*="bg-indigo-9"] *:not([style*="color"]):not([style*="background-color"]),
+                      .editor-content [class*="bg-purple-7"] *:not([style*="color"]):not([style*="background-color"]), .editor-content [class*="bg-purple-8"] *:not([style*="color"]):not([style*="background-color"]), .editor-content [class*="bg-purple-9"] *:not([style*="color"]):not([style*="background-color"]),
+                      .editor-content [class*="bg-violet-7"] *:not([style*="color"]):not([style*="background-color"]), .editor-content [class*="bg-violet-8"] *:not([style*="color"]):not([style*="background-color"]), .editor-content [class*="bg-violet-9"] *:not([style*="color"]):not([style*="background-color"]),
+                      .editor-content [class*="bg-emerald-7"] *:not([style*="color"]):not([style*="background-color"]), .editor-content [class*="bg-emerald-8"] *:not([style*="color"]):not([style*="background-color"]), .editor-content [class*="bg-emerald-9"] *:not([style*="color"]):not([style*="background-color"]),
+                      .editor-content [class*="bg-rose-7"] *:not([style*="color"]):not([style*="background-color"]), .editor-content [class*="bg-rose-8"] *:not([style*="color"]):not([style*="background-color"]), .editor-content [class*="bg-rose-9"] *:not([style*="color"]):not([style*="background-color"]),
+                      .editor-content [class*="bg-teal-7"] *:not([style*="color"]):not([style*="background-color"]), .editor-content [class*="bg-teal-8"] *:not([style*="color"]):not([style*="background-color"]), .editor-content [class*="bg-teal-9"] *:not([style*="color"]):not([style*="background-color"]),
+                      .editor-content [class*="bg-cyan-7"] *:not([style*="color"]):not([style*="background-color"]), .editor-content [class*="bg-cyan-8"] *:not([style*="color"]):not([style*="background-color"]), .editor-content [class*="bg-cyan-9"] * {
                         color: ${editorTextColor} !important;
                       }
 
@@ -4084,14 +4088,13 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
                       .editor-content [style*="background-color:#1"],
                       .editor-content [style*="background-color:#2"],
                       .editor-content [style*="background-color:#3"],
-                      .editor-content [style*="background-color: rgb(0"],
-                      .editor-content [style*="background-color: rgb(1"],
-                      .editor-content [style*="background-color: rgb(2"],
-                      .editor-content [style*="background-color: rgb(3"],
-                      .editor-content [style*="background-color:rgb(0"],
-                      .editor-content [style*="background-color:rgb(1"],
-                      .editor-content [style*="background-color:rgb(2"],
-                      .editor-content [style*="background-color:rgb(3"],
+                      .editor-content [style*="background-color: rgb(15"],
+                      .editor-content [style*="background-color: rgb(30"],
+                      .editor-content [style*="background-color: rgb(24"],
+                      .editor-content [style*="background-color: rgb(0,0,0)"],
+                      .editor-content [style*="background-color:rgb(15"],
+                      .editor-content [style*="background-color:rgb(30"],
+                      .editor-content [style*="background-color:rgb(24"],
                       .editor-content [style*="background: #0"],
                       .editor-content [style*="background: #1"],
                       .editor-content [style*="background: #2"],
@@ -4220,7 +4223,10 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
                         .editor-content [class*="text-stone-"] {
                           color: #1e293b !important;
                         }
-                        .editor-content h1, .editor-content h2, .editor-content h3, .editor-content h4, .editor-content h5, .editor-content h6, .editor-content p, .editor-content span, .editor-content div, .editor-content font {
+                         .editor-content h1, .editor-content h2, .editor-content h3, .editor-content h4, .editor-content h5, .editor-content h6, .editor-content p, 
+                        .editor-content span:not([style*="color"]):not([style*="background-color"]), 
+                        .editor-content div:not([class*="bg-"]):not([style*="background-color"]):not([style*="color"]), 
+                        .editor-content font:not([color]) {
                           color: #1e293b !important;
                         }
                       ` : ''}
