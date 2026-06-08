@@ -34,7 +34,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showExportStyleModal, setShowExportStyleModal] = useState(false);
-  const [selectedExportStyle, setSelectedExportStyle] = useState<'executive' | 'handwritten' | 'minimalist' | 'academic' | 'retro'>('executive');
+  const [selectedExportStyle, setSelectedExportStyle] = useState<'executive' | 'handwritten' | 'minimalist' | 'academic' | 'retro' | 'medium_bg' | 'light_bg' | 'no_bg'>('executive');
   const [pdfCustomHeader, setPdfCustomHeader] = useState('');
   const [pdfCustomFooter, setPdfCustomFooter] = useState('');
   const [keepRowsTogether, setKeepRowsTogether] = useState(true);
@@ -77,7 +77,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
   const editorRef = useRef<HTMLDivElement>(null);
   const savedRange = useRef<Range | null>(null);
 
-  const exportPDF = async (customStyle?: 'executive' | 'handwritten' | 'minimalist' | 'academic' | 'retro') => {
+  const exportPDF = async (customStyle?: 'executive' | 'handwritten' | 'minimalist' | 'academic' | 'retro' | 'medium_bg' | 'light_bg' | 'no_bg') => {
     if (!editorRef.current) return;
     const findTopicLocal = (items: DPSSTopic[], id: string): DPSSTopic | null => {
       for (const item of items) {
@@ -95,7 +95,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
 
     // Settings
     const settings = data.settings || { fontSize: 12, fontFamily: "'Inter', sans-serif" };
-    const paperStyleToUse = pdfPaperStyle !== 'none' ? pdfPaperStyle : (settings.paperStyle || 'none');
+    const paperStyleToUse = styleToUse === 'no_bg' ? 'none' : (pdfPaperStyle !== 'none' ? pdfPaperStyle : (settings.paperStyle || 'none'));
     const selectedPaper = PAPER_STYLES.find(s => s.id === paperStyleToUse) || PAPER_STYLES[0];
 
     // CSS background generator for paper styling
@@ -317,9 +317,119 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
         .synthesis-card-wrapper, .qa-board-wrapper { border: 1px dashed #10b981 !important; border-radius: 4px !important; background-color: #04100c !important; color: #10b981 !important; padding: 15px !important; }
         .paper-dots, .paper-grid, .paper-ruled { background-color: #070d19 !important; border: 1px dashed #1e293b !important; }
       `;
+    } else if (styleToUse === 'medium_bg') {
+      bgColor = '#94a3b8'; // professional medium slate background
+      textColor = '#0f172a'; // dark text for high contrast
+      accentColor = '#10b981';
+      fontFamilyRule = "'Inter', system-ui, -apple-system, sans-serif";
+
+      customHeaderHtml = `
+        <div style="margin-bottom: 12px; border-bottom: 2px solid ${accentColor}; padding-bottom: 8px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+          <div style="font-size: 8pt; font-weight: 950; color: #1e293b; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 4px; font-family: 'Inter', sans-serif;">Identity Mastery System (Medium Background)</div>
+          <h1 style="font-size: 18pt; font-weight: 900; color: #010614; margin: 0; padding: 0; line-height: 1.15; letter-spacing: -0.025em; text-align: center; font-family: 'Inter', sans-serif;">${activeTopic.title}</h1>
+          <p style="font-size: 8.5pt; color: #1e293b; text-transform: uppercase; letter-spacing: 2px; margin-top: 4px; font-weight: 700; margin-bottom: 0; font-family: 'Inter', sans-serif;">Performance Documentation • ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+        </div>
+      `;
+
+      customContentStyles = `
+        .note-content { line-height: 1.5; font-size: 11pt; color: ${textColor} !important; }
+        .note-content p { margin-bottom: 6pt; }
+        .note-content h1, .note-content h2, .note-content h3 { font-weight: 800; color: #0f172a !important; margin-top: 10pt; margin-bottom: 5pt; }
+        .note-content table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+        .note-content th, .note-content td { border: 1px solid #64748b; padding: 8px; color: ${textColor} !important; }
+        .synthesis-card-wrapper, .qa-board-wrapper { 
+          border: 1.5px solid #475569 !important; 
+          background-color: #cbd5e1 !important; 
+          border-radius: 12px !important; 
+          padding: 12px 14px !important; 
+          margin: 8px 0 !important; 
+          color: ${textColor} !important;
+          box-shadow: none !important;
+        }
+        .paper-dots, .paper-grid, .paper-ruled, .paper-engineering { 
+          background-image: none !important; 
+          background-color: #cbd5e1 !important; 
+          border: 1px solid #475569 !important; 
+          border-radius: 10px !important; 
+          padding: 12px !important; 
+        }
+      `;
+    } else if (styleToUse === 'light_bg') {
+      bgColor = '#f1f5f9'; // beautiful morning light gray-slate
+      textColor = '#1e293b'; // dark text
+      accentColor = '#10b981';
+      fontFamilyRule = "'Inter', system-ui, -apple-system, sans-serif";
+
+      customHeaderHtml = `
+        <div style="margin-bottom: 12px; border-bottom: 2px solid ${accentColor}; padding-bottom: 8px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+          <div style="font-size: 8pt; font-weight: 950; color: ${accentColor}; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 4px; font-family: 'Inter', sans-serif;">Identity Mastery System (Light Background)</div>
+          <h1 style="font-size: 18pt; font-weight: 900; color: #010614; margin: 0; padding: 0; line-height: 1.15; letter-spacing: -0.025em; text-align: center; font-family: 'Inter', sans-serif;">${activeTopic.title}</h1>
+          <p style="font-size: 8.5pt; color: #64748b; text-transform: uppercase; letter-spacing: 2px; margin-top: 4px; font-weight: 700; margin-bottom: 0; font-family: 'Inter', sans-serif;">Performance Documentation • ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+        </div>
+      `;
+
+      customContentStyles = `
+        .note-content { line-height: 1.5; font-size: 11pt; color: ${textColor} !important; }
+        .note-content p { margin-bottom: 6pt; }
+        .note-content h1, .note-content h2, .note-content h3 { font-weight: 800; color: #010614 !important; margin-top: 10pt; margin-bottom: 5pt; }
+        .note-content table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+        .note-content th, .note-content td { border: 1px solid #cbd5e1; padding: 8px; color: ${textColor} !important; }
+        .synthesis-card-wrapper, .qa-board-wrapper { 
+          border: 1.5px solid #cbd5e1 !important; 
+          background-color: #f8fafc !important; 
+          border-radius: 12px !important; 
+          padding: 12px 14px !important; 
+          margin: 8px 0 !important; 
+          color: ${textColor} !important;
+          box-shadow: none !important;
+        }
+        .paper-dots, .paper-grid, .paper-ruled, .paper-engineering { 
+          background-image: none !important; 
+          background-color: #f8fafc !important; 
+          border: 1px solid #cbd5e1 !important; 
+          border-radius: 10px !important; 
+          padding: 12px !important; 
+        }
+      `;
+    } else if (styleToUse === 'no_bg') {
+      bgColor = '#ffffff'; // pure white
+      textColor = '#000000'; // black text
+      accentColor = '#10b981';
+      fontFamilyRule = "'Inter', system-ui, -apple-system, sans-serif";
+
+      customHeaderHtml = `
+        <div style="margin-bottom: 12px; border-bottom: 2px solid ${accentColor}; padding-bottom: 8px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+          <div style="font-size: 8pt; font-weight: 950; color: #000000; text-transform: uppercase; letter-spacing: 3px; margin-bottom: 4px; font-family: 'Inter', sans-serif;">Identity Mastery System (No Background)</div>
+          <h1 style="font-size: 18pt; font-weight: 900; color: #000000; margin: 0; padding: 0; line-height: 1.15; letter-spacing: -0.025em; text-align: center; font-family: 'Inter', sans-serif;">${activeTopic.title}</h1>
+          <p style="font-size: 8.5pt; color: #000000; text-transform: uppercase; letter-spacing: 2px; margin-top: 4px; font-weight: 700; margin-bottom: 0; font-family: 'Inter', sans-serif;">Performance Documentation • ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+        </div>
+      `;
+
+      customContentStyles = `
+        .note-content { line-height: 1.5; font-size: 11pt; color: #000000 !important; }
+        .note-content p { margin-bottom: 6pt; }
+        .note-content h1, .note-content h2, .note-content h3 { font-weight: 800; color: #000000 !important; margin-top: 10pt; margin-bottom: 5pt; }
+        .note-content table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+        .note-content th, .note-content td { border: 1px solid #cbd5e1; padding: 8px; color: #000000 !important; }
+        .synthesis-card-wrapper, .qa-board-wrapper { 
+          border: 1.5px solid #cbd5e1 !important; 
+          background-color: #ffffff !important; 
+          border-radius: 12px !important; 
+          padding: 12px 14px !important; 
+          margin: 8px 0 !important; 
+          color: #000000 !important;
+          box-shadow: none !important;
+        }
+        .paper-dots, .paper-grid, .paper-ruled, .paper-engineering { 
+          background-image: none !important; 
+          background-color: #ffffff !important; 
+          border: 1px solid #cbd5e1 !important; 
+          border-radius: 10px !important; 
+          padding: 12px !important; 
+        }
+      `;
     } else {
       // Classic Executive (Default)
-      const isDark = false;
       bgColor = '#ffffff';
       textColor = '#1e293b';
       accentColor = '#0284c7';
@@ -406,16 +516,96 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
 
         ${paperBackgroundCss}
 
-        /* Force readable light backgrounds and dark texts for all light themes during export */
+        /* Force readable background and dark texts for all light and medium themes during export */
         ${styleToUse !== 'retro' ? `
           #pdf-export-body, #pdf-export-container, .note-content, .export-content {
             background-color: ${bgColor} !important;
             background: ${bgColor} !important;
             color: ${textColor} !important;
           }
+          /* Overrides to prevent unreadable dark backgrounds and pure black backgrounds in exported elements */
+          .note-content [class*="bg-[#0"],
+          .note-content [class*="bg-[#1"],
+          .note-content [class*="bg-[#2"],
+          .note-content [class*="bg-[#3"],
+          .note-content [class*="bg-[#a"],
+          .note-content [class*="bg-[#b"],
+          .note-content [class*="bg-[#c"],
+          .note-content [class*="bg-[#d"],
+          .note-content [class*="bg-[#e"],
+          .note-content [class*="bg-[#f"],
+          .note-content [class*="bg-slate-7"],
+          .note-content [class*="bg-slate-8"],
+          .note-content [class*="bg-slate-9"],
+          .note-content [class*="bg-zinc-7"],
+          .note-content [class*="bg-zinc-8"],
+          .note-content [class*="bg-zinc-9"],
+          .note-content [class*="bg-stone-7"],
+          .note-content [class*="bg-stone-8"],
+          .note-content [class*="bg-stone-9"],
+          .note-content [class*="bg-neutral-7"],
+          .note-content [class*="bg-neutral-8"],
+          .note-content [class*="bg-neutral-9"],
+          .note-content [class*="bg-gray-7"],
+          .note-content [class*="bg-gray-8"],
+          .note-content [class*="bg-gray-9"],
+          .note-content [class*="bg-[#0f172a]"],
+          .note-content [class*="bg-[#0b1329]"],
+          .note-content [class*="bg-black"],
+          .note-content [style*="background-color: #0"],
+          .note-content [style*="background-color: #1"],
+          .note-content [style*="background-color: #2"],
+          .note-content [style*="background-color: #3"],
+          .note-content [style*="background-color:#0"],
+          .note-content [style*="background-color:#1"],
+          .note-content [style*="background-color:#2"],
+          .note-content [style*="background-color:#3"],
+          .note-content [style*="background-color: rgb(0"],
+          .note-content [style*="background-color: rgb(1"],
+          .note-content [style*="background-color: rgb(2"],
+          .note-content [style*="background-color: rgb(3"],
+          .note-content [style*="background-color:rgb(0"],
+          .note-content [style*="background-color:rgb(1"],
+          .note-content [style*="background-color:rgb(2"],
+          .note-content [style*="background-color:rgb(3"],
+          .note-content [style*="background: #0"],
+          .note-content [style*="background: #1"],
+          .note-content [style*="background: #2"],
+          .note-content [style*="background: #3"],
+          .note-content [style*="background:#0"],
+          .note-content [style*="background:#1"],
+          .note-content [style*="background:#2"],
+          .note-content [style*="background:#3"],
+          .note-content [style*="background:black"],
+          .note-content [style*="background-color:black"],
+          .note-content [style*="background: black"],
+          .note-content [style*="background-color: black"] {
+            background-color: ${styleToUse === 'medium_bg' ? '#cbd5e1' : '#f1f5f9'} !important;
+            background: ${styleToUse === 'medium_bg' ? '#cbd5e1' : '#f1f5f9'} !important;
+            color: #0f172a !important;
+            border-color: ${styleToUse === 'medium_bg' ? '#64748b' : '#cbd5e1'} !important;
+          }
+
+          /* Ensure texts inside overridden dark containers are perfectly readable */
+          .note-content [class*="bg-[#0"] *, .note-content [class*="bg-[#1"] *, 
+          .note-content [class*="bg-[#2"] *, .note-content [class*="bg-[#3"] *, 
+          .note-content [class*="bg-slate-7"] *, .note-content [class*="bg-slate-8"] *, .note-content [class*="bg-slate-9"] *,
+          .note-content [class*="bg-zinc-7"] *, .note-content [class*="bg-zinc-8"] *, .note-content [class*="bg-zinc-9"] *,
+          .note-content [class*="bg-stone-7"] *, .note-content [class*="bg-stone-8"] *, .note-content [class*="bg-stone-9"] *,
+          .note-content [class*="bg-neutral-7"] *, .note-content [class*="bg-neutral-8"] *, .note-content [class*="bg-neutral-9"] *,
+          .note-content [class*="bg-gray-7"] *, .note-content [class*="bg-gray-8"] *, .note-content [class*="bg-gray-9"] *,
+          .note-content [class*="bg-black"] *,
+          .note-content [style*="background-color: #0"] *,
+          .note-content [style*="background-color: #1"] *,
+          .note-content [style*="background-color: #2"] *,
+          .note-content [style*="background-color: #3"] *,
+          .note-content [style*="background-color: black"] * {
+            color: #0f172a !important;
+          }
+
           .synthesis-card-wrapper, .qa-board-wrapper, blockquote, pre {
-            background-color: #f8fafc !important;
-            background: #f8fafc !important;
+            background-color: ${styleToUse === 'medium_bg' ? '#cbd5e1' : '#f8fafc'} !important;
+            background: ${styleToUse === 'medium_bg' ? '#cbd5e1' : '#f8fafc'} !important;
             color: #1e293b !important;
             border-color: #cbd5e1 !important;
           }
@@ -3990,6 +4180,27 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                     desc: 'Phosphor green monospace coding log layout. System stamp headers, dotted dividers and dark diagnostic styling.',
                     icon: '📟',
                     accentClass: 'border-emerald-500 bg-emerald-50/10'
+                  },
+                  {
+                    id: 'medium_bg',
+                    name: 'Classic Medium Background',
+                    desc: 'Classic business layout presented with a professional medium charcoal-slate background blend for balanced focus.',
+                    icon: '🔘',
+                    accentClass: 'border-slate-500 bg-slate-100 dark:bg-slate-800'
+                  },
+                  {
+                    id: 'light_bg',
+                    name: 'Classic Light Background',
+                    desc: 'Clean corporate layout set against a beautiful warm morning-light gray canvas for soothing contrast.',
+                    icon: '☀️',
+                    accentClass: 'border-blue-400 bg-blue-50/10'
+                  },
+                  {
+                    id: 'no_bg',
+                    name: 'Classic No Background',
+                    desc: 'Pristine, pure-white blank canvas style offering unmatched laser-print clarity and high-contrast text rendering.',
+                    icon: '🏳️',
+                    accentClass: 'border-slate-300 bg-white dark:bg-slate-900'
                   }
                 ].map((style) => (
                   <button
@@ -4104,6 +4315,60 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                         <div className="h-1 w-full bg-emerald-800" />
                         <div className="h-1 w-11/12 bg-emerald-800" />
                         <div className="h-1 w-full bg-emerald-800" />
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedExportStyle === 'medium_bg' && (
+                    <div className="bg-slate-400 border border-slate-500 p-4 rounded-2xl shadow-sm space-y-3 font-sans text-slate-900">
+                      <div className="border-b-2 border-slate-800 pb-2 text-center">
+                        <div className="h-3 w-32 bg-slate-800 rounded mx-auto" />
+                        <div className="h-1.5 w-20 bg-slate-700 mt-1.5 rounded mx-auto" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <div className="h-2 w-full bg-slate-800/30 rounded" />
+                        <div className="h-2 w-5/6 bg-slate-800/30 rounded" />
+                        <div className="h-2 w-4/6 bg-slate-800/30 rounded" />
+                      </div>
+                      <div className="border border-slate-500 p-2 rounded-lg bg-slate-300">
+                        <div className="h-1.5 w-1/3 bg-slate-800 rounded mb-1" />
+                        <div className="h-1.5 w-2/3 bg-slate-700 rounded" />
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedExportStyle === 'light_bg' && (
+                    <div className="bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-4 rounded-2xl shadow-sm space-y-3 font-sans">
+                      <div className="border-b-2 border-emerald-500 pb-2 text-center">
+                        <div className="h-3 w-32 bg-slate-800 dark:bg-slate-100 rounded mx-auto" />
+                        <div className="h-1.5 w-20 bg-slate-400 mt-1.5 rounded mx-auto" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <div className="h-2 w-full bg-slate-300 dark:bg-slate-600 rounded" />
+                        <div className="h-2 w-5/6 bg-slate-300 dark:bg-slate-600 rounded" />
+                        <div className="h-2 w-4/6 bg-slate-300 dark:bg-slate-600 rounded" />
+                      </div>
+                      <div className="border border-slate-200 dark:border-slate-700 p-2 rounded-lg bg-slate-50 dark:bg-slate-900">
+                        <div className="h-1.5 w-1/3 bg-emerald-500 rounded mb-1" />
+                        <div className="h-1.5 w-2/3 bg-slate-400 dark:bg-slate-500 rounded" />
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedExportStyle === 'no_bg' && (
+                    <div className="bg-white border border-slate-300 p-4 rounded-2xl shadow-sm space-y-3 font-sans text-black">
+                      <div className="border-b-2 border-slate-950 pb-2 text-center">
+                        <div className="h-3 w-32 bg-black rounded mx-auto" />
+                        <div className="h-1.5 w-20 bg-slate-600 mt-1.5 rounded mx-auto" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <div className="h-2 w-full bg-slate-200 rounded" />
+                        <div className="h-2 w-5/6 bg-slate-200 rounded" />
+                        <div className="h-2 w-4/6 bg-slate-200 rounded" />
+                      </div>
+                      <div className="border border-slate-300 p-2 rounded-lg bg-white">
+                        <div className="h-1.5 w-1/3 bg-black rounded mb-1" />
+                        <div className="h-1.5 w-2/3 bg-slate-500 rounded" />
                       </div>
                     </div>
                   )}
