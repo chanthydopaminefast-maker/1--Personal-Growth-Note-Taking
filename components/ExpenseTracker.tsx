@@ -1305,7 +1305,6 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
 
   return (
     <div className="expense-tracker-container flex-1 flex flex-col h-full bg-white/[0.005] backdrop-blur-3xl p-3 md:p-6 overflow-y-auto md:overflow-hidden font-sans">
-      <div className="w-full lg:w-[80%] max-w-7xl mx-auto flex flex-col h-full">
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-4 gap-4">
         <div>
           <h1 className="text-3xl font-black text-slate-900 tracking-tighter uppercase italic flex items-center gap-3 drop-shadow-sm">
@@ -1768,7 +1767,7 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
                                                       value={inlineInputs[cat] || ''}
                                                       onChange={(e) => setInlineInputs({...inlineInputs, [cat]: e.target.value})}
                                                       onKeyDown={(e) => e.key === 'Enter' && handleInlineAdd(cat)}
-                                                      className="w-24 sm:w-28 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl py-1.5 px-3 text-right text-xs font-black outline-none placeholder:text-slate-350 dark:placeholder:text-slate-650 transition-all focus:border-amber-500 focus:bg-white text-slate-900 dark:text-slate-150 shadow-inner"
+                                                      className="w-20 sm:w-28 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl py-1.5 px-3 text-right text-xs font-black outline-none placeholder:text-slate-350 dark:placeholder:text-slate-650 transition-all focus:border-amber-500 focus:bg-white text-slate-900 dark:text-slate-150 shadow-inner"
                                                     />
                                                 </div>
                                                 {hasInput && (
@@ -2165,7 +2164,7 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
                   <motion.div 
                     initial={{ scale: 0.95, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
-                    className="bg-white w-full max-w-lg rounded-[40px] p-10 shadow-2xl border border-slate-200 relative"
+                    className="bg-white w-full max-w-md rounded-[40px] p-8 shadow-2xl border border-slate-200 relative"
                   >
                       <h3 className="text-2xl font-black text-slate-900 mb-8 uppercase italic tracking-tighter">
                         {editingExpenseId ? 'Edit Record' : 'New Record'}
@@ -2341,7 +2340,7 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
                   <motion.div 
                     initial={{ scale: 0.95, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
-                    className="bg-white w-full max-w-lg rounded-[40px] p-10 shadow-2xl border border-slate-200 relative"
+                    className="bg-white w-full max-w-md rounded-[40px] p-8 shadow-2xl border border-slate-200 relative"
                   >
                       <button onClick={() => setIsManagingCategories(false)} className="absolute top-8 right-8 text-slate-900/20 hover:text-slate-900">
                         <X size={20} />
@@ -2403,7 +2402,7 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
                   <motion.div 
                     initial={{ scale: 0.95, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
-                    className="bg-white w-full max-w-lg rounded-[40px] p-10 shadow-2xl border border-slate-200 relative"
+                    className="bg-white w-full max-w-md rounded-[40px] p-8 shadow-2xl border border-slate-200 relative"
                   >
                       <button onClick={() => setIsManagingRecurring(false)} className="absolute top-8 right-8 text-slate-900/20 hover:text-slate-900">
                         <X size={20} />
@@ -2519,7 +2518,6 @@ export const ExpenseTracker: React.FC<ExpenseTrackerProps> = ({ data, onUpdate, 
         >
           <Plus size={28} />
         </motion.button>
-      </div>
       </div>
 
       <style>{`

@@ -2651,17 +2651,15 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
     const currentDpssTopics = data.dpssTopics || [];
     const updatedDpssTopics = [...currentDpssTopics, clonedTopic];
 
-    if (onUpdateTopic) {
-      const root = findRootTopic(data.selfLearningTopics || [], topicToMove.id);
-      const updatedRoot = root ? findRootTopic(updatedSLTopics, root.id) : null;
-      onUpdateTopic(updatedSLTopics, updatedRoot || undefined);
-    } else {
-      onUpdate({
-        ...data,
-        selfLearningTopics: updatedSLTopics,
-        dpssTopics: updatedDpssTopics
-      });
-    }
+    const root = findRootTopic(data.selfLearningTopics || [], topicToMove.id);
+    const updatedRoot = root ? findRootTopic(updatedSLTopics, root.id) : null;
+    
+    // Always use onUpdate to ensure both topic arrays are saved to state
+    onUpdate({
+      ...data,
+      selfLearningTopics: updatedSLTopics,
+      dpssTopics: updatedDpssTopics
+    });
 
     if (selectedTopicId === topicToMove.id) {
        setSelectedTopicId(null);
@@ -2697,7 +2695,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
     const isExpanded = !!expandedTopics[topic.id];
 
     return (
-      <div key={topic.id} className="relative select-none" style={{ marginLeft: `${depth * 8}px` }}>
+      <div key={topic.id} className="select-none" style={{ marginLeft: `${depth * 8}px` }}>
         <div 
           onClick={() => {
             setSelectedTopicId(topic.id);
@@ -2706,7 +2704,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
               setExpandedTopics(prev => ({ ...prev, [topic.id]: !prev[topic.id] }));
             }
           }} 
-          className={`group flex items-center justify-between p-2 my-1 rounded-xl cursor-pointer border transition-all ${
+          className={`relative group flex items-center justify-between p-2 my-1 rounded-xl cursor-pointer border transition-all ${openMenuId === topic.id ? 'z-[100]' : 'z-10'} ${
             isSelected 
               ? `${style.activeBg} ${style.border} ${style.text} shadow-sm scale-[1.01]` 
               : `bg-white/40 dark:bg-slate-900/10 ${style.border} ${style.text} hover:scale-[1.01] hover:bg-white/70`
