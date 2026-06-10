@@ -528,12 +528,12 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
           .note-content [class*="bg-[#1"],
           .note-content [class*="bg-[#2"],
           .note-content [class*="bg-[#3"],
-          .note-content [class*="bg-[#a"],
-          .note-content [class*="bg-[#b"],
-          .note-content [class*="bg-[#c"],
-          .note-content [class*="bg-[#d"],
-          .note-content [class*="bg-[#e"],
-          .note-content [class*="bg-[#f"],
+          .note-content [class*="bg-[#a" ${styleToUse === 'no_bg' ? '' : ', .note-content [class*="bg-[#a"'}],
+          .note-content [class*="bg-[#b" ${styleToUse === 'no_bg' ? '' : ', .note-content [class*="bg-[#b"'}],
+          .note-content [class*="bg-[#c" ${styleToUse === 'no_bg' ? '' : ', .note-content [class*="bg-[#c"'}],
+          .note-content [class*="bg-[#d" ${styleToUse === 'no_bg' ? '' : ', .note-content [class*="bg-[#d"'}],
+          .note-content [class*="bg-[#e" ${styleToUse === 'no_bg' ? '' : ', .note-content [class*="bg-[#e"'}],
+          .note-content [class*="bg-[#f" ${styleToUse === 'no_bg' ? '' : ', .note-content [class*="bg-[#f"'}],
           .note-content [class*="bg-slate-7"],
           .note-content [class*="bg-slate-8"],
           .note-content [class*="bg-slate-9"],
@@ -580,9 +580,9 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
           .note-content [style*="background-color:black"],
           .note-content [style*="background: black"],
           .note-content [style*="background-color: black"] {
-            background-color: ${styleToUse === 'medium_bg' ? '#cbd5e1' : '#f1f5f9'} !important;
-            background: ${styleToUse === 'medium_bg' ? '#cbd5e1' : '#f1f5f9'} !important;
-            color: #0f172a !important;
+            background-color: ${styleToUse === 'no_bg' ? 'transparent' : (styleToUse === 'medium_bg' ? '#cbd5e1' : '#f1f5f9')} !important;
+            background: ${styleToUse === 'no_bg' ? 'transparent' : (styleToUse === 'medium_bg' ? '#cbd5e1' : '#f1f5f9')} !important;
+            color: #000000 !important;
             border-color: ${styleToUse === 'medium_bg' ? '#64748b' : '#cbd5e1'} !important;
           }
 
@@ -600,7 +600,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
           .note-content [style*="background-color: #2"] *,
           .note-content [style*="background-color: #3"] *,
           .note-content [style*="background-color: black"] * {
-            color: #0f172a !important;
+            color: #000000 !important;
           }
 
           .synthesis-card-wrapper, .qa-board-wrapper, blockquote, pre {
@@ -1523,32 +1523,49 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
 
   const handleShareTopic = async (topic: any) => {
     setSharingTopicId(topic.id);
+    const storedUser = localStorage.getItem('dps_user');
+    let userName = 'Chanthy';
+    let userId = 'unknown';
+    if (storedUser) {
+      try {
+        const u = JSON.parse(storedUser);
+        userName = u.name || 'Chanthy';
+        userId = u.uid || 'unknown';
+      } catch(e){}
+    }
+
     try {
       const { createSharedNote } = await import('../services/firebase');
-      const storedUser = localStorage.getItem('dps_user');
-      let userName = 'Chanthy';
-      let userId = 'unknown';
-      if (storedUser) {
-        try {
-          const u = JSON.parse(storedUser);
-          userName = u.name || 'Chanthy';
-          userId = u.uid || 'unknown';
-        } catch(e){}
-      }
       
-      const shareId = await createSharedNote(
-        userId,
-        userName,
-        'note-taking',
-        topic.title,
-        topic
+      const timeoutPromise = new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error('timeout')), 3200)
       );
+
+      const shareId = await Promise.race([
+        createSharedNote(userId, userName, 'note-taking', topic.title, topic),
+        timeoutPromise
+      ]);
       
       const link = window.location.origin + window.location.pathname + '?share=' + shareId;
       setGeneratedShareLink(link);
     } catch (error: any) {
-      console.error(error);
-      alert(`Failed to generate shared link: ${error?.message || error || 'Unknown error'}`);
+      console.warn("Firestore sharing failed/timedout. Falling back to local URL-safe Base64 encoding.", error);
+      try {
+        const { encodeToURLSafeBase64 } = await import('../services/sharingEncoder');
+        const envelope = {
+          ownerId: userId,
+          ownerName: userName,
+          type: 'note-taking',
+          title: topic.title,
+          payload: topic
+        };
+        const encodedData = encodeToURLSafeBase64(envelope);
+        const link = window.location.origin + window.location.pathname + '?sharedData=' + encodedData;
+        setGeneratedShareLink(link);
+      } catch (fallbackError) {
+        console.error("Local fallback sharing failed", fallbackError);
+        alert("Failed to share topic.");
+      }
     } finally {
       setSharingTopicId(null);
     }
@@ -2387,6 +2404,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
   };
 
   const handleEditorTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    // Disable touch resizing to prevent table/column layout messiness and allow easy text editing on touch/mobile devices
+    return;
     if (e.touches.length === 0) return;
     const touch = e.touches[0];
     const target = touch.target as HTMLElement;
@@ -3040,7 +3059,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                         <div className="flex gap-1 bg-white/40 p-1 rounded-lg shrink-0">
                           <div className="relative group/list z-[150]">
                             <button className="p-1.5 hover:bg-white rounded transition-colors text-slate-700 font-bold text-xs flex items-center gap-1" title="Bullets"><List size={14} /> <span className="text-[10px]">▼</span></button>
-                            <div className="absolute hidden group-hover/list:grid grid-cols-5 gap-1 top-full left-0 bg-white shadow-xl border border-slate-200 p-2 rounded-xl z-[200] w-[180px]">
+                            <div className="absolute hidden group-hover/list:grid grid-cols-5 gap-1 top-full left-0 bg-white shadow-xl border border-slate-200 p-2 rounded-xl z-[9999] w-[180px]">
                                {['•','🌹','⭐','🚗','❤️','✅','✨','🔥','🔮','🍃','🎵','👑','☀️','🌙','💎'].map(marker => (
                                  <button key={marker} onClick={() => {
                                     const html = `<ul style="list-style-type: none; padding-left: 20px;"><li>${marker} &nbsp;</li></ul><div><br></div>`;
@@ -3052,7 +3071,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
 
                           <div className="relative group/list2 z-[150]">
                             <button className="p-1.5 hover:bg-white rounded transition-colors text-slate-700 font-bold text-xs flex items-center gap-1" title="Numbers"><ListOrdered size={14} /> <span className="text-[10px]">▼</span></button>
-                            <div className="absolute hidden group-hover/list2:flex flex-col gap-1 top-full left-0 bg-white shadow-xl border border-slate-200 p-2 rounded-xl z-[200] w-[120px]">
+                            <div className="absolute hidden group-hover/list2:flex flex-col gap-1 top-full left-0 bg-white shadow-xl border border-slate-200 p-2 rounded-xl z-[9999] w-[120px]">
                                {[ {n: '1.', t: 'decimal'}, {n:'1)', t: 'ol'}, {n:'1-', t: 'ol'}, {n:'I.', t:'upper-roman'}, {n:'i.', t:'lower-roman'}, {n:'A.', t:'upper-alpha'}, {n:'a.', t:'lower-alpha'}, {n:'①', t:'ol'} ].map(marker => (
                                  <button key={marker.n} onClick={() => {
                                     let html = '';
@@ -3069,7 +3088,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
 
                           <div className="relative group/list3 z-[150]">
                             <button className="p-1.5 hover:bg-white rounded transition-colors text-slate-700 font-bold text-xs flex items-center gap-1" title="Checklist"><CheckSquare size={14} /> <span className="text-[10px]">▼</span></button>
-                            <div className="absolute hidden group-hover/list3:grid grid-cols-2 gap-1 top-full left-0 bg-white shadow-xl border border-slate-200 p-2 rounded-xl z-[200] w-[140px]">
+                            <div className="absolute hidden group-hover/list3:grid grid-cols-2 gap-1 top-full left-0 bg-white shadow-xl border border-slate-200 p-2 rounded-xl z-[9999] w-[140px]">
                                {['⬜', '[ ]', '🔳', '⚪', '🔴', '❎', '✓'].map((marker, idx) => (
                                  <button key={idx} onClick={() => {
                                     const html = `<ul style="list-style-type: none; padding-left: 20px;"><li style="display: flex; gap: 8px; align-items: flex-start;"><span contenteditable="false" class="task-checkbox" style="cursor: pointer; user-select: none;">${marker}</span><span>&nbsp;</span></li></ul><div><br></div>`;
@@ -4089,7 +4108,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                      return null;
                   };
                   
-                  const targetTopic = findNode(topics, sharingTopicId);
+                  const targetTopic = findNode(topics, selectedTopic?.id || sharingTopicId || '');
                   
                   if (targetTopic) {
                     const blob = new Blob([JSON.stringify(targetTopic, null, 2)], { type: 'application/json' });

@@ -130,6 +130,54 @@ export const FloatingToolbar = () => {
         setPickerPos(null);
     };
 
+    const applyFontFamily = (font: string) => {
+        const selection = window.getSelection();
+        if (!selection || !savedRange.current) return;
+        
+        selection.removeAllRanges();
+        selection.addRange(savedRange.current);
+
+        document.execCommand('fontName', false, font);
+
+        const fontTags = document.querySelectorAll(`font[face="${font}"], font[face="${font.toLowerCase()}"]`);
+        fontTags.forEach(tag => {
+            const span = document.createElement('span');
+            span.style.fontFamily = font;
+            while (tag.firstChild) {
+                span.appendChild(tag.firstChild);
+            }
+            tag.parentNode?.replaceChild(span, tag);
+        });
+
+        if (selection.rangeCount > 0) {
+            savedRange.current = selection.getRangeAt(0).cloneRange();
+        }
+    };
+
+    const applyFontSize = (size: string) => {
+        const selection = window.getSelection();
+        if (!selection || !savedRange.current) return;
+        
+        selection.removeAllRanges();
+        selection.addRange(savedRange.current);
+
+        document.execCommand('fontSize', false, '7');
+
+        const fontTags = document.querySelectorAll('font[size="7"]');
+        fontTags.forEach(tag => {
+            const span = document.createElement('span');
+            span.style.fontSize = `${size}px`;
+            while (tag.firstChild) {
+                span.appendChild(tag.firstChild);
+            }
+            tag.parentNode?.replaceChild(span, tag);
+        });
+
+        if (selection.rangeCount > 0) {
+            savedRange.current = selection.getRangeAt(0).cloneRange();
+        }
+    };
+
     const applyFormat = (command: string, value?: string) => {
         const selection = window.getSelection();
         if (!selection || !savedRange.current) return;
@@ -169,8 +217,7 @@ export const FloatingToolbar = () => {
                 <div className="flex bg-slate-50 p-1 rounded-xl gap-1 items-center shrink-0">
                     <select 
                         onChange={(e) => {
-                            const font = e.target.value;
-                            applyFormat('fontName', font);
+                            applyFontFamily(e.target.value);
                         }}
                         className="bg-white px-2 py-1 rounded-lg text-[10px] font-bold border-none outline-none cursor-pointer hover:bg-slate-100 transition-colors"
                         title="Font"
@@ -182,19 +229,7 @@ export const FloatingToolbar = () => {
                     
                     <select 
                         onChange={(e) => {
-                            const size = e.target.value;
-                            const selection = window.getSelection();
-                            if (selection && selection.rangeCount > 0) {
-                                const range = selection.getRangeAt(0);
-                                const span = document.createElement('span');
-                                span.style.fontSize = `${size}px`;
-                                try {
-                                    range.surroundContents(span);
-                                } catch {
-                                    // Fallback if range is complex
-                                    document.execCommand('fontSize', false, '3'); // Medium
-                                }
-                            }
+                            applyFontSize(e.target.value);
                         }}
                         className="bg-white px-2 py-1 rounded-lg text-[10px] font-bold border-none outline-none cursor-pointer hover:bg-slate-100 transition-colors w-14"
                         title="Size"
@@ -353,6 +388,59 @@ export const RichTextDiv: React.FC<{
         }
     };
 
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLElement>) => {
+        if (e.key === 'Enter') {
+            const selection = window.getSelection();
+            if (selection && selection.rangeCount > 0) {
+                const range = selection.getRangeAt(0);
+                const li = range.startContainer.parentElement?.closest('li') || (range.startContainer.nodeType === 1 ? (range.startContainer as HTMLElement).closest('li') : null);
+                if (li) {
+                    const liText = li.textContent?.trim() || '';
+                    if (liText === '' || liText === '⬜' || liText === '[ ]' || liText === '🔳' || liText === '⚪' || liText === '🔴' || liText === '❎' || liText === '✓' || liText === '🌹' || liText === '⭐' || liText === '•' || liText === '🚗' || liText === '❤️' || liText === '✅' || liText === '✨' || liText === '🔥' || liText === '🔮' || liText === '🍃' || liText === '🎵' || liText === '👑' || liText === '☀️' || liText === '🌙' || liText === '💎') {
+                        return;
+                    }
+
+                    // 1) Checklist
+                    const checkbox = li.querySelector('.task-checkbox');
+                    if (checkbox) {
+                        e.preventDefault();
+                        let marker = checkbox.textContent || '⬜';
+                        const togglesToBlank: Record<string, string> = {
+                            '✅': '⬜', '🟢': '⚪', '[x]': '[ ]'
+                        };
+                        if (togglesToBlank[marker]) marker = togglesToBlank[marker];
+
+                        const html = `<li style="display: flex; gap: 8px; align-items: flex-start;"><span contenteditable="false" class="task-checkbox" style="cursor: pointer; user-select: none;">${marker}</span><span>&nbsp;</span></li>`;
+                        document.execCommand('insertHTML', false, html);
+                        return;
+                    }
+
+                    // 2) Custom bullet / emoji list
+                    const customBulletedMarker = ['•','🌹','⭐','🚗','❤️','✅','✨','🔥','🔮','🍃','🎵','👑','☀️','🌙','💎'];
+                    const foundMarker = customBulletedMarker.find(m => liText.trim().startsWith(m));
+                    if (foundMarker) {
+                        e.preventDefault();
+                        const html = `<li>${foundMarker} &nbsp;</li>`;
+                        document.execCommand('insertHTML', false, html);
+                        return;
+                    }
+
+                    // 3) Custom numeric increment list: e.g. "1.", "1)", "1-"
+                    const numMatch = liText.trim().match(/^(\d+)([\.\)\-])/);
+                    if (numMatch) {
+                        e.preventDefault();
+                        const currentNum = parseInt(numMatch[1], 10);
+                        const separator = numMatch[2];
+                        const nextNum = currentNum + 1;
+                        const html = `<li>${nextNum}${separator} &nbsp;</li>`;
+                        document.execCommand('insertHTML', false, html);
+                        return;
+                    }
+                }
+            }
+        }
+    };
+
     const Tag = tagName as any;
 
     return (
@@ -366,6 +454,7 @@ export const RichTextDiv: React.FC<{
             onBlur={handleBlur}
             onFocus={handleFocus}
             onClick={handleClick}
+            onKeyDown={handleKeyDown}
             placeholder={placeholder}
         />
     );

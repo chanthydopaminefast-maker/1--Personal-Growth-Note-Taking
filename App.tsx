@@ -17,6 +17,7 @@ import Dashboard from './components/Dashboard';
 import { FloatingToolbar } from './components/FloatingToolbar';
 import { AppData, Student, CurrentUser, UserRole, ColumnConfig, Tab, ViewMode, AppSettings, StudentCategory, JournalEntry, ExpenseEntry } from './types';
 import { subscribeToData, saveData, auth, signInWithGoogle, logOut } from './services/firebase';
+import { decodeFromURLSafeBase64 } from './services/sharingEncoder';
 import { storage } from './services/storage';
 import { Menu, MessageSquare, X, GraduationCap } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
@@ -159,7 +160,35 @@ const App: React.FC = () => {
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const shareId = urlParams.get('share');
-    if (shareId) {
+    const sharedDataParam = urlParams.get('sharedData');
+
+    if (sharedDataParam) {
+      try {
+        const decodedPayload = decodeFromURLSafeBase64(sharedDataParam);
+        if (decodedPayload) {
+          const mockSharedDoc = {
+            id: 'local_shared_data',
+            ownerId: decodedPayload.ownerId || 'unknown',
+            ownerName: decodedPayload.ownerName || 'Chanthy',
+            type: decodedPayload.type || 'note-taking',
+            title: decodedPayload.title || 'Shared Topic',
+            payload: decodedPayload.payload || decodedPayload
+          };
+          setSharedNoteData(mockSharedDoc);
+          setIsImportModalOpen(true);
+          if (mockSharedDoc.payload?.date) {
+            setImportingDate(mockSharedDoc.payload?.date);
+          }
+        } else {
+          alert("This shared link data is corrupted or invalid.");
+          window.history.replaceState(null, '', window.location.pathname);
+        }
+      } catch (err) {
+        console.error("Error decoding sharedData", err);
+        alert("This shared link data is invalid.");
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+    } else if (shareId) {
       setIsFetchSharedLoading(true);
       import('./services/firebase').then(({ getSharedNote }) => {
         getSharedNote(shareId).then((sharedDoc) => {

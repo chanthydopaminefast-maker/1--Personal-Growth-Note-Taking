@@ -1,8 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { 
-  initializeFirestore, 
-  persistentLocalCache, 
-  persistentMultipleTabManager, 
+  getFirestore,
   doc, 
   onSnapshot, 
   setDoc, 
@@ -20,12 +18,8 @@ import { storage } from './storage';
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firestore with robust multi-tab persistent cache for full offline support
-export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager()
-  })
-}, firebaseConfig.firestoreDatabaseId);
+// Initialize Firestore using standard getFirestore to prevent multi-tab cache locks inside iframe sandbox environments
+export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
 export const auth = getAuth(app);
 // Explicitly set persistence to LOCAL to ensure sessions survive reloads/redeploys
