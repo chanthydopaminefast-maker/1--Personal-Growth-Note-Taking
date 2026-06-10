@@ -215,29 +215,42 @@ export const FloatingToolbar = () => {
         >
             <div className="flex gap-2 items-center px-1">
                 <div className="flex bg-slate-50 p-1 rounded-xl gap-1 items-center shrink-0">
-                    <select 
-                        onChange={(e) => {
-                            applyFontFamily(e.target.value);
-                        }}
-                        className="bg-white px-2 py-1 rounded-lg text-[10px] font-bold border-none outline-none cursor-pointer hover:bg-slate-100 transition-colors"
-                        title="Font"
-                    >
-                        {fontFamilies.map(f => (
-                            <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>{f.name}</option>
-                        ))}
-                    </select>
+                    <div className="relative group/font z-[99999] bg-white rounded-lg border border-transparent">
+                        <div className="px-2 py-1 text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1 hover:bg-slate-100 rounded-lg">
+                            <span className="w-16 truncate text-slate-700">Modern</span>
+                            <span className="text-[8px] text-slate-400">▼</span>
+                        </div>
+                        <div className="absolute hidden group-hover/font:flex flex-col gap-1 top-full left-0 bg-white shadow-[0px_10px_30px_rgba(0,0,0,0.1)] border border-slate-200 p-1.5 rounded-xl mt-1 max-h-[200px] overflow-y-auto min-w-[120px]">
+                            {fontFamilies.map(f => (
+                                <button
+                                    key={f.value}
+                                    onClick={() => applyFontFamily(f.value)}
+                                    style={{ fontFamily: f.value }}
+                                    className="text-left px-2 py-1.5 text-[11px] rounded hover:bg-slate-100 w-full whitespace-nowrap transition-colors text-slate-700"
+                                >
+                                    {f.name}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
                     
-                    <select 
-                        onChange={(e) => {
-                            applyFontSize(e.target.value);
-                        }}
-                        className="bg-white px-2 py-1 rounded-lg text-[10px] font-bold border-none outline-none cursor-pointer hover:bg-slate-100 transition-colors w-14"
-                        title="Size"
-                    >
-                        {[12, 14, 16, 18, 20, 24, 28, 32, 48].map(s => (
-                            <option key={s} value={s}>{s}px</option>
-                        ))}
-                    </select>
+                    <div className="relative group/size z-[99999] bg-white rounded-lg border border-transparent">
+                        <div className="px-2 py-1 text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1 hover:bg-slate-100 rounded-lg">
+                            <span className="w-5 text-center text-slate-700">14p</span>
+                            <span className="text-[8px] text-slate-400">▼</span>
+                        </div>
+                        <div className="absolute hidden group-hover/size:flex flex-col gap-1 top-full left-0 bg-white shadow-[0px_10px_30px_rgba(0,0,0,0.1)] border border-slate-200 p-1.5 rounded-xl mt-1 w-[60px] max-h-[200px] overflow-y-auto">
+                            {[12, 14, 16, 18, 20, 24, 28, 32, 48].map(s => (
+                                <button
+                                    key={s}
+                                    onClick={() => applyFontSize(s.toString())}
+                                    className="text-center px-2 py-1.5 text-[11px] rounded hover:bg-slate-100 w-full transition-colors text-slate-700"
+                                >
+                                    {s}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
                 </div>
 
                 <div className="w-px h-6 bg-slate-100 self-center mx-1" />
