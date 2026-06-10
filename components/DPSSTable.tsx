@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Plus, Trash2, Calendar, AlignLeft, AlignCenter, AlignRight, Highlighter, Type, Settings2, MousePointer2, Minus, Layout, Square, Quote, FileUp, FileDown, Loader2, Wand2, Menu, ChevronLeft, FileText, ChevronDown, ChevronRight, Table, Grid3X3, Columns, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Palette, Italic, Underline, Strikethrough, Indent, Outdent, List, ListOrdered, CheckSquare, MoreHorizontal, Download, Maximize2, Minimize2, Search, Archive, Folder, Star, Share2, Pencil, Lock, Unlock, ArrowRightLeft, GraduationCap } from 'lucide-react';
+import { Plus, Trash2, Calendar, AlignLeft, AlignCenter, AlignRight, Highlighter, Type, Settings2, MousePointer2, Minus, Layout, Square, Quote, FileUp, FileDown, Loader2, Wand2, Menu, ChevronLeft, FileText, ChevronDown, ChevronRight, Table, Grid3X3, Columns, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Palette, Italic, Underline, Strikethrough, Indent, Outdent, List, ListOrdered, CheckSquare, MoreHorizontal, Download, Maximize2, Minimize2, Search, Archive, Folder, Star, Share2, Pencil, Lock, Unlock, ArrowRightLeft, GraduationCap, Copy } from 'lucide-react';
 import { AppData, DPSSTopic } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { callNeuralEngine } from '../services/neuralEngine';
@@ -1443,6 +1443,60 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     }
   };
 
+  const getParentId = (items: DPSSTopic[], childId: string, parentId: string | null = null): string | null => {
+    for (const item of items) {
+      if (item.id === childId) return parentId;
+      if (item.children) {
+        const found = getParentId(item.children, childId, item.id);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+
+  const duplicateTopic = (id: string) => {
+    const cloneNode = (node: DPSSTopic): DPSSTopic => {
+      return {
+        ...node,
+        id: uuidv4(),
+        children: node.children ? node.children.map(cloneNode) : undefined
+      };
+    };
+
+    const targetTopic = findTopic(data.dpssTopics || [], id);
+    if (!targetTopic) return;
+    
+    const cloned = cloneNode(targetTopic);
+    cloned.title = `${cloned.title} - Copy`;
+
+    const updateTopics = (items: DPSSTopic[]): DPSSTopic[] => {
+      const index = items.findIndex(item => item.id === id);
+      if (index !== -1) {
+        const newItems = [...items];
+        newItems.splice(index + 1, 0, cloned);
+        return newItems;
+      }
+      return items.map(item => {
+        if (item.children) return { ...item, children: updateTopics(item.children) };
+        return item;
+      });
+    };
+
+    const parentId = getParentId(data.dpssTopics || [], id);
+    const updated = updateTopics(data.dpssTopics || []);
+    
+    if (onUpdateTopic) {
+      if (!parentId) {
+        onUpdateTopic(updated, cloned);
+      } else {
+        const root = findRootTopic(updated, parentId);
+        onUpdateTopic(updated, root || undefined);
+      }
+    } else {
+      onUpdate({ ...data, dpssTopics: updated });
+    }
+  };
+
   const deleteTopic = (id: string) => {
     const findTopicAndCheckLock = (items: DPSSTopic[]): boolean => {
       for (const item of items) {
@@ -1538,7 +1592,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       const { createSharedNote } = await import('../services/firebase');
       
       const timeoutPromise = new Promise<never>((_, reject) => 
-        setTimeout(() => reject(new Error('timeout')), 3200)
+        setTimeout(() => reject(new Error('timeout')), 5000)
       );
 
       const shareId = await Promise.race([
@@ -1549,23 +1603,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       const link = window.location.origin + window.location.pathname + '?share=' + shareId;
       setGeneratedShareLink(link);
     } catch (error: any) {
-      console.warn("Firestore sharing failed/timedout. Falling back to local URL-safe Base64 encoding.", error);
-      try {
-        const { encodeToURLSafeBase64 } = await import('../services/sharingEncoder');
-        const envelope = {
-          ownerId: userId,
-          ownerName: userName,
-          type: 'note-taking',
-          title: topic.title,
-          payload: topic
-        };
-        const encodedData = encodeToURLSafeBase64(envelope);
-        const link = window.location.origin + window.location.pathname + '?sharedData=' + encodedData;
-        setGeneratedShareLink(link);
-      } catch (fallbackError) {
-        console.error("Local fallback sharing failed", fallbackError);
-        alert("Failed to share topic.");
-      }
+      console.error("Firestore sharing failed:", error);
+      alert("Failed to create shareable link. Please ensure your database is connected and available.");
     } finally {
       setSharingTopicId(null);
     }
@@ -2696,6 +2735,18 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                     >
                       {topic.isLocked ? <Lock size={14} className="text-red-500" /> : <Unlock size={14} className="text-blue-500" />}
                       {topic.isLocked ? "Unlock Document" : "Lock from Deletion"}
+                    </button>
+
+                    <button 
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        duplicateTopic(topic.id);
+                        setOpenMenuId(null);
+                      }} 
+                      className="w-full text-left flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors text-xs"
+                    >
+                      <Copy size={14} className="text-teal-500" />
+                      Duplicate
                     </button>
 
                     <button 

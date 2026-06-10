@@ -139,14 +139,22 @@ export const FloatingToolbar = () => {
 
         document.execCommand('fontName', false, font);
 
-        const fontTags = document.querySelectorAll(`font[face="${font}"], font[face="${font.toLowerCase()}"]`);
+        const fontTags = document.querySelectorAll('font');
         fontTags.forEach(tag => {
-            const span = document.createElement('span');
-            span.style.fontFamily = font;
-            while (tag.firstChild) {
-                span.appendChild(tag.firstChild);
+            const htmlTag = tag as HTMLElement;
+            if (htmlTag.hasAttribute('face')) {
+                const span = document.createElement('span');
+                span.style.fontFamily = htmlTag.getAttribute('face') || font;
+                
+                // Copy any other styles on the old tag that might be there
+                if (htmlTag.hasAttribute('size')) span.style.fontSize = htmlTag.style.fontSize;
+                if (htmlTag.hasAttribute('color')) span.style.color = htmlTag.style.color;
+                
+                while (htmlTag.firstChild) {
+                    span.appendChild(htmlTag.firstChild);
+                }
+                htmlTag.parentNode?.replaceChild(span, htmlTag);
             }
-            tag.parentNode?.replaceChild(span, tag);
         });
 
         if (selection.rangeCount > 0) {
@@ -165,8 +173,14 @@ export const FloatingToolbar = () => {
 
         const fontTags = document.querySelectorAll('font[size="7"]');
         fontTags.forEach(tag => {
+            const htmlTag = tag as HTMLElement;
             const span = document.createElement('span');
             span.style.fontSize = `${size}px`;
+            
+            // Apply other preserved styles
+            if (htmlTag.hasAttribute('face')) span.style.fontFamily = htmlTag.style.fontFamily;
+            if (htmlTag.hasAttribute('color')) span.style.color = htmlTag.style.color;
+            
             while (tag.firstChild) {
                 span.appendChild(tag.firstChild);
             }
