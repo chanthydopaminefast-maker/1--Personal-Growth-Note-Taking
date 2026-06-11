@@ -154,18 +154,19 @@ export const HabitTracker: React.FC<HabitTrackerProps> = ({ data, onUpdate, onUp
     setIsSharingNote(true);
     const dateKey = format(selectedPlanningDate, 'yyyy-MM-dd');
     const noteContent = notes[dateKey] || '';
+    const storedUser = localStorage.getItem('dps_user');
+    let userName = 'Chanthy';
+    let userId = 'unknown';
+    if (storedUser) {
+      try {
+        const u = JSON.parse(storedUser);
+         userName = u.name || 'Chanthy';
+         userId = u.uid || 'unknown';
+      } catch(e){}
+    }
+
     try {
       const { createSharedNote } = await import('../services/firebase');
-      const storedUser = localStorage.getItem('dps_user');
-      let userName = 'Chanthy';
-      let userId = 'unknown';
-      if (storedUser) {
-        try {
-          const u = JSON.parse(storedUser);
-          userName = u.name || 'Chanthy';
-          userId = u.uid || 'unknown';
-        } catch(e){}
-      }
       
       const shareId = await createSharedNote(
         userId,
@@ -179,7 +180,23 @@ export const HabitTracker: React.FC<HabitTrackerProps> = ({ data, onUpdate, onUp
       setGeneratedShareLink(link);
     } catch (error: any) {
       console.error(error);
-      alert(`Failed to generate shared link: ${error?.message || error || 'Unknown error'}`);
+      const errMsg = error?.message || error || 'Unknown error';
+      try {
+        const { encodeToURLSafeBase64 } = await import('../services/sharingEncoder');
+        const fallbackPayload = {
+          ownerId: userId,
+          ownerName: userName,
+          type: 'daily-note',
+          title: `Daily Note: ${format(selectedPlanningDate, 'MMM d, yyyy')}`,
+          payload: { date: dateKey, content: noteContent }
+        };
+        const encoded = encodeToURLSafeBase64(fallbackPayload);
+        const link = window.location.origin + window.location.pathname + '?sharedData=' + encoded;
+        setGeneratedShareLink(link);
+        alert(`Firestore upload details: "${errMsg}".\n\nNo problem! We instantly generated a self-contained active share link for your note instead. Anyone with this link can view and import it to their portal!`);
+      } catch (fallbackErr: any) {
+        alert(`Failed to generate shared link: ${errMsg}`);
+      }
     } finally {
       setIsSharingNote(false);
     }

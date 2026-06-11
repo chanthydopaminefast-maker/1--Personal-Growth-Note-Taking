@@ -2905,10 +2905,27 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
       setGeneratedShareLink(link);
     } catch (error: any) {
       console.error("Firestore sharing failed:", error);
+      const errMsg = error?.message || error || 'Unknown Error';
+      
       if (error.message === 'PAYLOAD_TOO_LARGE') {
           alert("Failed to share: The note is too large (likely due to many large images). Please remove some images or share smaller sub-topics.");
       } else {
-          alert("Failed to create shareable link. Please ensure your connection is active.");
+          try {
+            const { encodeToURLSafeBase64 } = await import('../services/sharingEncoder');
+            const fallbackPayload = {
+              ownerId: userId,
+              ownerName: userName,
+              type: 'self-learning',
+              title: topic.title,
+              payload: topic
+            };
+            const encoded = encodeToURLSafeBase64(fallbackPayload);
+            const link = window.location.origin + window.location.pathname + '?sharedData=' + encoded;
+            setGeneratedShareLink(link);
+            alert(`Firestore upload details: "${errMsg}".\n\nNot to worry! We have instantly generated a self-contained active share link for your topic instead. Anyone with this link can view and import it to their portal!`);
+          } catch (fallbackErr: any) {
+            alert(`Failed to create shareable link: ${errMsg}`);
+          }
       }
     } finally {
       setSharingTopicId(null);
