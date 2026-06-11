@@ -182,22 +182,7 @@ export const HabitTracker: React.FC<HabitTrackerProps> = ({ data, onUpdate, onUp
     } catch (error: any) {
       console.error(error);
       const errMsg = error?.message || error || 'Unknown error';
-      try {
-        const { encodeToURLSafeBase64 } = await import('../services/sharingEncoder');
-        const fallbackPayload = {
-          ownerId: userId,
-          ownerName: userName,
-          type: 'daily-note',
-          title: `Daily Note: ${format(selectedPlanningDate, 'MMM d, yyyy')}`,
-          payload: { date: dateKey, content: noteContent }
-        };
-        const encoded = encodeToURLSafeBase64(fallbackPayload);
-        const link = window.location.origin + window.location.pathname + '?sharedData=' + encoded;
-        setGeneratedShareLink(link);
-        alert(`Firestore upload details: "${errMsg}".\n\nNo problem! We instantly generated a self-contained active share link for your note instead. Anyone with this link can view and import it to their portal!`);
-      } catch (fallbackErr: any) {
-        alert(`Failed to generate shared link: ${errMsg}`);
-      }
+      alert(`Failed to generate shared link: ${errMsg}\n\nPlease check your internet connection or try again.`);
     } finally {
       setIsSharingNote(false);
     }
