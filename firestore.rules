@@ -9,6 +9,9 @@ service cloud.firestore {
     // Allow public read/write to shared links/notes
     match /sharedNotes/{shareId} {
       allow read, write: if true;
+      match /{allPaths=**} {
+         allow read, write: if true;
+      }
     }
 
     // Allow authenticated users to manage their own app data

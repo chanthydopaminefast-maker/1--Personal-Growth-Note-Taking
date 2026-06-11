@@ -605,20 +605,36 @@ export const saveTopic = async (userId: string, topic: any, category: 'dpss' | '
       const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
       const flatNodes = flattenTopicTree(topic);
       
-      const batch = writeBatch(db);
+      const batches = [];
+      let currentBatch = writeBatch(db);
+      let operationCount = 0;
       
       for (const node of flatNodes) {
-        const sizeBytes = new Blob([JSON.stringify(node)]).size;
+        const sanitizedNode = sanitizeForFirestore(node);
+        const sizeBytes = new Blob([JSON.stringify(sanitizedNode)]).size;
         if (sizeBytes > 950000) {
           console.error(`Document ${node.id} is too large (${sizeBytes} bytes).`);
           window.dispatchEvent(new CustomEvent('PAYLOAD_TOO_LARGE', { detail: { id: topic.id, title: topic.title || 'Topic' } }));
           return; // Skip saving to Firestore to prevent crashing connection
         }
+        
+        if (operationCount >= 490) {
+          batches.push(currentBatch.commit());
+          currentBatch = writeBatch(db);
+          operationCount = 0;
+        }
+        
         const docRef = doc(db, 'users', userId, coll, node.id);
-        batch.set(docRef, node, { merge: true });
+        currentBatch.set(docRef, sanitizedNode, { merge: true });
+        operationCount++;
       }
       
-      await batch.commit();
+      if (operationCount > 0) {
+        batches.push(currentBatch.commit());
+      }
+      
+      await Promise.all(batches);
+      
     } catch (error) {
       const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
       handleFirestoreError(error, OperationType.WRITE, `users/${userId}/${coll}/${topic.id}`);
@@ -845,30 +861,47 @@ export const createSharedNote = async (
   };
 
   const writeOperation = async () => {
-    const batch = writeBatch(db);
-
     if (type === 'note-taking' || type === 'self-learning') {
        const flatNodes = flattenTopicTree(lightPayload);
-       batch.set(shareRef, safeData);
+       
+       const batches = [];
+       let currentBatch = writeBatch(db);
+       let operationCount = 1;
+       
+       currentBatch.set(shareRef, safeData);
+       
        for (const node of flatNodes) {
+          if (operationCount >= 490) {
+             batches.push(currentBatch.commit());
+             currentBatch = writeBatch(db);
+             operationCount = 0;
+          }
+          
           const nodeRef = doc(db, 'sharedNotes', shareId, 'nodes', node.id);
           const serialized = sanitizeForFirestore(node);
           const sizeBytes = new Blob([JSON.stringify(serialized)]).size;
           if (sizeBytes > 950000) {
               throw new Error('PAYLOAD_TOO_LARGE');
           }
-          batch.set(nodeRef, serialized);
+          currentBatch.set(nodeRef, serialized);
+          operationCount++;
        }
+       
+       if (operationCount > 0) {
+          batches.push(currentBatch.commit());
+       }
+       
+       await Promise.all(batches);
     } else {
+       const batch = writeBatch(db);
        safeData.payload = sanitizeForFirestore(lightPayload || {});
        const sizeBytes = new Blob([JSON.stringify(safeData)]).size;
        if (sizeBytes > 950000) {
          throw new Error('PAYLOAD_TOO_LARGE');
        }
        batch.set(shareRef, safeData);
+       await batch.commit();
     }
-
-    await batch.commit();
   };
 
   const timeoutPromise = new Promise<never>((_, reject) => 
