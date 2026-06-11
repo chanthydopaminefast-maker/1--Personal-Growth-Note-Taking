@@ -9,7 +9,10 @@ import {
   getDocFromServer, 
   collection, 
   writeBatch,
-  getDoc
+  getDoc,
+  query,
+  where,
+  getDocs
 } from 'firebase/firestore';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, setPersistence, browserLocalPersistence } from 'firebase/auth'; 
 import { AppData, BackupEntry, Student } from '../types';
@@ -21,6 +24,51 @@ const app = initializeApp(firebaseConfig);
 
 // Initialize Firestore
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+const flattenTopicTree = (node: any, parentId: string | null = null, rootId: string = node.id): any[] => {
+  let flatList: any[] = [];
+  const children = node.children || [];
+  const flatNode = { ...node, parentId, rootId };
+  flatNode.childIds = children.map((c: any) => c.id);
+  delete flatNode.children;
+  flatList.push(flatNode);
+  for (const child of children) {
+    flatList = flatList.concat(flattenTopicTree(child, node.id, rootId));
+  }
+  return flatList;
+};
+
+const reconstructTopics = (docs: any[]) => {
+  const nodeMap = new Map();
+  const roots: any[] = [];
+
+  docs.forEach(d => {
+    nodeMap.set(d.id, { ...d, children: Array.isArray(d.children) ? [...d.children] : [] });
+  });
+  
+  docs.forEach(d => {
+    const node = nodeMap.get(d.id);
+    if (d.parentId && nodeMap.has(d.parentId)) {
+       const parent = nodeMap.get(d.parentId);
+       const existingIdx = parent.children.findIndex((c: any) => c.id === node.id);
+       if (existingIdx !== -1) {
+          parent.children[existingIdx] = node;
+       } else {
+          parent.children.push(node);
+       }
+    } else if (!d.parentId) {
+       roots.push(node);
+    }
+  });
+
+  for (const node of nodeMap.values()) {
+     if (node.childIds && node.childIds.length > 0) {
+        node.children.sort((a: any, b: any) => node.childIds.indexOf(a.id) - node.childIds.indexOf(b.id));
+     }
+  }
+  
+  return roots;
+};
 
 // Enable offline persistence so data isn't lost during connection blips or reloads
 enableIndexedDbPersistence(db).catch((err) => {
@@ -317,7 +365,8 @@ export const subscribeToData = (
   const unsubTopics = onSnapshot(topicsRef, (querySnap) => {
     const sub = activeSubscriptions.get(userId);
     if (sub) {
-      sub.currentData.dpssTopics = querySnap.docs.map(d => d.data() as any);
+      const rawDocs = querySnap.docs.map(d => d.data() as any);
+      sub.currentData.dpssTopics = reconstructTopics(rawDocs);
       notifyChange();
     }
   }, (err) => handleFirestoreError(err, OperationType.GET, topicsRef.path));
@@ -358,7 +407,8 @@ export const subscribeToData = (
   const unsubSl = onSnapshot(slRef, (querySnap) => {
     const sub = activeSubscriptions.get(userId);
     if (sub) {
-      sub.currentData.selfLearningTopics = querySnap.docs.map(d => d.data() as any);
+      const rawDocs = querySnap.docs.map(d => d.data() as any);
+      sub.currentData.selfLearningTopics = reconstructTopics(rawDocs);
       notifyChange();
     }
   }, (err) => handleFirestoreError(err, OperationType.GET, slRef.path));
@@ -552,16 +602,32 @@ export const saveTopic = async (userId: string, topic: any, category: 'dpss' | '
   saveTimeouts.set(topicKey, setTimeout(async () => {
     try {
       const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
-      const docRef = doc(db, 'users', userId, coll, topic.id);
+      const flatNodes = flattenTopicTree(topic);
+      const flatNodeIds = new Set(flatNodes.map(n => n.id));
       
-      const sizeBytes = new Blob([JSON.stringify(topic)]).size;
-      if (sizeBytes > 950000) {
-        console.error(`Document ${topic.id} is too large (${sizeBytes} bytes).`);
-        window.dispatchEvent(new CustomEvent('PAYLOAD_TOO_LARGE', { detail: { id: topic.id, title: topic.title || 'Topic' } }));
-        return; // Skip saving to Firestore to prevent crashing connection
+      const batch = writeBatch(db);
+      
+      // Query to find orphaned nodes that were removed from the structure
+      const qOld = query(collection(db, 'users', userId, coll), where('rootId', '==', topic.id));
+      const oldSnap = await getDocs(qOld);
+      oldSnap.forEach(d => {
+         if (!flatNodeIds.has(d.id) && d.id !== topic.id) {
+            batch.delete(doc(db, 'users', userId, coll, d.id));
+         }
+      });
+
+      for (const node of flatNodes) {
+        const sizeBytes = new Blob([JSON.stringify(node)]).size;
+        if (sizeBytes > 950000) {
+          console.error(`Document ${node.id} is too large (${sizeBytes} bytes).`);
+          window.dispatchEvent(new CustomEvent('PAYLOAD_TOO_LARGE', { detail: { id: topic.id, title: topic.title || 'Topic' } }));
+          return; // Skip saving to Firestore to prevent crashing connection
+        }
+        const docRef = doc(db, 'users', userId, coll, node.id);
+        batch.set(docRef, node, { merge: true });
       }
       
-      await setDoc(docRef, topic, { merge: true });
+      await batch.commit();
     } catch (error) {
       const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
       handleFirestoreError(error, OperationType.WRITE, `users/${userId}/${coll}/${topic.id}`);
@@ -583,8 +649,20 @@ export const deleteTopic = async (userId: string, topicId: string, category: 'dp
 
   try {
     const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
-    const docRef = doc(db, 'users', userId, coll, topicId);
-    await deleteDoc(docRef);
+    const collRef = collection(db, 'users', userId, coll);
+    
+    // Using rootId or id to find all associated sub-topics to delete
+    // Note: older documents might not have rootId, so we explicitly delete topicId as well.
+    const q1 = query(collRef, where('rootId', '==', topicId));
+    const snap = await getDocs(q1);
+    
+    const batch = writeBatch(db);
+    batch.delete(doc(db, 'users', userId, coll, topicId));
+    snap.forEach(d => {
+       batch.delete(doc(db, 'users', userId, coll, d.id));
+    });
+    
+    await batch.commit();
   } catch (error) {
     const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
     handleFirestoreError(error, OperationType.DELETE, `users/${userId}/${coll}/${topicId}`);
