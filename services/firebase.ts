@@ -56,7 +56,8 @@ const reconstructTopics = (docs: any[]) => {
        } else {
           parent.children.push(node);
        }
-    } else if (!d.parentId) {
+    } else {
+       // Root node for this subset if parent is not in nodeMap
        roots.push(node);
     }
   });
@@ -905,7 +906,7 @@ export const createSharedNote = async (
   };
 
   const timeoutPromise = new Promise<never>((_, reject) => 
-    setTimeout(() => reject(new Error('TIMEOUT')), 12000)
+    setTimeout(() => reject(new Error('TIMEOUT')), 60000)
   );
 
   await Promise.race([
