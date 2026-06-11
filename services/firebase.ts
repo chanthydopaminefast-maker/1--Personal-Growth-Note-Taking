@@ -745,20 +745,31 @@ export const createSharedNote = async (
     throw new Error('PAYLOAD_TOO_LARGE');
   }
 
-  // Fire off the setDoc operation asynchronously and resolve the link instantly.
-  // This guarantees sharing link is generated in 0.01s, even on super unstable/offline connections.
-  setDoc(shareRef, safeData).catch(err => {
-    console.error("Firestore sharing background upload failed:", err);
-  });
+  // Await the write to guarantee the shared note is uploaded to the Firestore server
+  // and completely synchronized before the user copies or opens the share link.
+  const timeoutPromise = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 8000));
+  await Promise.race([
+    setDoc(shareRef, safeData),
+    timeoutPromise
+  ]);
   
   return shareId;
 };
 
 export const getSharedNote = async (shareId: string): Promise<any> => {
   const shareRef = doc(db, 'sharedNotes', shareId);
-  const docSnap = await getDoc(shareRef);
-  if (docSnap.exists()) {
-    return docSnap.data();
+  try {
+    // Fetch directly from the server to bypass any cached offline/stale null results
+    const docSnap = await getDocFromServer(shareRef);
+    if (docSnap.exists()) {
+      return docSnap.data();
+    }
+  } catch (error) {
+    console.warn("getDocFromServer failed, trying default getDoc:", error);
+    const docSnap = await getDoc(shareRef);
+    if (docSnap.exists()) {
+      return docSnap.data();
+    }
   }
   return null;
 };

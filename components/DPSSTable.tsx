@@ -2643,6 +2643,19 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     return colors[hash % colors.length];
   };
 
+  const getTopicSizeKB = (node: DPSSTopic): number => {
+    const countChars = (item: DPSSTopic): number => {
+      let chars = (item.content || '').length + (item.title || '').length;
+      if (item.children) {
+        for (const child of item.children) {
+          chars += countChars(child);
+        }
+      }
+      return chars;
+    };
+    return Math.round(countChars(node) / 1024);
+  };
+
   const renderTopic = (topic: DPSSTopic, depth = 0): React.ReactNode => {
     const isSelected = selectedTopicId === topic.id;
     const style = getTopicStyles(topic.id, isSelected);
@@ -2722,7 +2735,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
 
           <div className="flex gap-[6px] shrink-0 items-center">
             <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-950 px-1.5 py-0.5 rounded-lg border border-slate-200/50 dark:border-slate-800 scale-90 shrink-0 select-none" title="Size of this folder/file including subtopics">
-               {(new Blob([JSON.stringify(topic)]).size / 1024).toFixed(0)} KB
+               {getTopicSizeKB(topic)} KB
             </span>
             {isSelected && (
               <div className="relative shrink-0">
