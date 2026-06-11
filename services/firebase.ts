@@ -63,6 +63,7 @@ const reconstructTopics = (docs: any[]) => {
 
   for (const node of nodeMap.values()) {
      if (node.childIds && node.childIds.length > 0) {
+        node.children = node.children.filter((c: any) => node.childIds.includes(c.id));
         node.children.sort((a: any, b: any) => node.childIds.indexOf(a.id) - node.childIds.indexOf(b.id));
      }
   }
@@ -603,19 +604,9 @@ export const saveTopic = async (userId: string, topic: any, category: 'dpss' | '
     try {
       const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
       const flatNodes = flattenTopicTree(topic);
-      const flatNodeIds = new Set(flatNodes.map(n => n.id));
       
       const batch = writeBatch(db);
       
-      // Query to find orphaned nodes that were removed from the structure
-      const qOld = query(collection(db, 'users', userId, coll), where('rootId', '==', topic.id));
-      const oldSnap = await getDocs(qOld);
-      oldSnap.forEach(d => {
-         if (!flatNodeIds.has(d.id) && d.id !== topic.id) {
-            batch.delete(doc(db, 'users', userId, coll, d.id));
-         }
-      });
-
       for (const node of flatNodes) {
         const sizeBytes = new Blob([JSON.stringify(node)]).size;
         if (sizeBytes > 950000) {
@@ -642,26 +633,24 @@ export const deleteTopic = async (userId: string, topicId: string, category: 'dp
   
   // Update local cache
   const sub = activeSubscriptions.get(userId);
+  let flatNodes: any[] = [];
   if (sub) {
     const field = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
-    updateLocalCache(userId, { [field]: (sub.currentData[field] || []).filter((t: any) => t.id !== topicId) });
+    const topics = sub.currentData[field] || [];
+    const topicToDelete = topics.find((t: any) => t.id === topicId);
+    if (topicToDelete) {
+       flatNodes = flattenTopicTree(topicToDelete);
+    }
+    updateLocalCache(userId, { [field]: topics.filter((t: any) => t.id !== topicId) });
   }
 
   try {
     const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
-    const collRef = collection(db, 'users', userId, coll);
-    
-    // Using rootId or id to find all associated sub-topics to delete
-    // Note: older documents might not have rootId, so we explicitly delete topicId as well.
-    const q1 = query(collRef, where('rootId', '==', topicId));
-    const snap = await getDocs(q1);
-    
     const batch = writeBatch(db);
     batch.delete(doc(db, 'users', userId, coll, topicId));
-    snap.forEach(d => {
-       batch.delete(doc(db, 'users', userId, coll, d.id));
+    flatNodes.forEach(node => {
+       batch.delete(doc(db, 'users', userId, coll, node.id));
     });
-    
     await batch.commit();
   } catch (error) {
     const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
@@ -851,24 +840,43 @@ export const createSharedNote = async (
     ownerName: String(ownerName || 'Chanthy').substring(0, 120),
     type: String(type || 'self-learning').substring(0, 45),
     title: String(title || 'Untitled').substring(0, 250),
-    payload: sanitizeForFirestore(lightPayload || {}),
+    payload: null as any,
     createdAt: new Date().toISOString()
   };
-  
-  const sizeBytes = new Blob([JSON.stringify(safeData)]).size;
-  if (sizeBytes > 950000) {
-    throw new Error('PAYLOAD_TOO_LARGE');
-  }
 
-  // Explicitly write to Firestore and await with a robust 12-second timeout.
-  // If the cloud write fails or times out, we throw an error so that the caller's catch block
-  // triggers the 100% reliable self-contained encoded fallback link.
+  const writeOperation = async () => {
+    const batch = writeBatch(db);
+
+    if (type === 'note-taking' || type === 'self-learning') {
+       const flatNodes = flattenTopicTree(lightPayload);
+       batch.set(shareRef, safeData);
+       for (const node of flatNodes) {
+          const nodeRef = doc(db, 'sharedNotes', shareId, 'nodes', node.id);
+          const serialized = sanitizeForFirestore(node);
+          const sizeBytes = new Blob([JSON.stringify(serialized)]).size;
+          if (sizeBytes > 950000) {
+              throw new Error('PAYLOAD_TOO_LARGE');
+          }
+          batch.set(nodeRef, serialized);
+       }
+    } else {
+       safeData.payload = sanitizeForFirestore(lightPayload || {});
+       const sizeBytes = new Blob([JSON.stringify(safeData)]).size;
+       if (sizeBytes > 950000) {
+         throw new Error('PAYLOAD_TOO_LARGE');
+       }
+       batch.set(shareRef, safeData);
+    }
+
+    await batch.commit();
+  };
+
   const timeoutPromise = new Promise<never>((_, reject) => 
     setTimeout(() => reject(new Error('TIMEOUT')), 12000)
   );
 
   await Promise.race([
-    setDoc(shareRef, safeData),
+    writeOperation(),
     timeoutPromise
   ]);
   
@@ -877,18 +885,39 @@ export const createSharedNote = async (
 
 export const getSharedNote = async (shareId: string): Promise<any> => {
   const shareRef = doc(db, 'sharedNotes', shareId);
+  let data: any = null;
+
   try {
-    // Fetch directly from the server to bypass any cached offline/stale null results
     const docSnap = await getDocFromServer(shareRef);
     if (docSnap.exists()) {
-      return docSnap.data();
+      data = docSnap.data();
     }
   } catch (error) {
     console.warn("getDocFromServer failed, trying default getDoc:", error);
     const docSnap = await getDoc(shareRef);
     if (docSnap.exists()) {
-      return docSnap.data();
+      data = docSnap.data();
     }
   }
+
+  if (data) {
+    if (data.type === 'note-taking' || data.type === 'self-learning') {
+      try {
+        const nodesRef = collection(db, 'sharedNotes', shareId, 'nodes');
+        const nodesSnap = await getDocs(nodesRef); // Subcollection docs
+        if (!nodesSnap.empty) {
+          const flatDocs = nodesSnap.docs.map(d => d.data());
+          const reconstructed = reconstructTopics(flatDocs);
+          if (reconstructed.length > 0) {
+            data.payload = reconstructed[0];
+          }
+        }
+      } catch (e) {
+        console.error("Failed to fetch shared note children:", e);
+      }
+    }
+    return data;
+  }
+
   return null;
 };
