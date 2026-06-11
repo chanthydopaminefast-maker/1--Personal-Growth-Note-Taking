@@ -782,11 +782,11 @@ export const createSharedNote = async (
     throw new Error('PAYLOAD_TOO_LARGE');
   }
 
-  // Explicitly write to Firestore and await with a robust 3-second timeout.
+  // Explicitly write to Firestore and await with a robust 12-second timeout.
   // If the cloud write fails or times out, we throw an error so that the caller's catch block
   // triggers the 100% reliable self-contained encoded fallback link.
   const timeoutPromise = new Promise<never>((_, reject) => 
-    setTimeout(() => reject(new Error('TIMEOUT')), 3000)
+    setTimeout(() => reject(new Error('TIMEOUT')), 12000)
   );
 
   await Promise.race([
