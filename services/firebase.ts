@@ -857,56 +857,22 @@ export const createSharedNote = async (
     ownerName: String(ownerName || 'Chanthy').substring(0, 120),
     type: String(type || 'self-learning').substring(0, 45),
     title: String(title || 'Untitled').substring(0, 250),
-    payload: null as any,
+    payload: sanitizeForFirestore(lightPayload || {}),
     createdAt: new Date().toISOString()
   };
 
   const writeOperation = async () => {
-    if (type === 'note-taking' || type === 'self-learning') {
-       const flatNodes = flattenTopicTree(lightPayload);
-       
-       const batches = [];
-       let currentBatch = writeBatch(db);
-       let operationCount = 1;
-       
-       currentBatch.set(shareRef, safeData);
-       
-       for (const node of flatNodes) {
-          if (operationCount >= 490) {
-             batches.push(currentBatch.commit());
-             currentBatch = writeBatch(db);
-             operationCount = 0;
-          }
-          
-          const nodeRef = doc(db, 'sharedNotes', shareId, 'nodes', node.id);
-          const serialized = sanitizeForFirestore(node);
-          const sizeBytes = new Blob([JSON.stringify(serialized)]).size;
-          if (sizeBytes > 950000) {
-              throw new Error('PAYLOAD_TOO_LARGE');
-          }
-          currentBatch.set(nodeRef, serialized);
-          operationCount++;
-       }
-       
-       if (operationCount > 0) {
-          batches.push(currentBatch.commit());
-       }
-       
-       await Promise.all(batches);
-    } else {
-       const batch = writeBatch(db);
-       safeData.payload = sanitizeForFirestore(lightPayload || {});
-       const sizeBytes = new Blob([JSON.stringify(safeData)]).size;
-       if (sizeBytes > 950000) {
-         throw new Error('PAYLOAD_TOO_LARGE');
-       }
-       batch.set(shareRef, safeData);
-       await batch.commit();
+    const batch = writeBatch(db);
+    const sizeBytes = new Blob([JSON.stringify(safeData)]).size;
+    if (sizeBytes > 950000) {
+      throw new Error('PAYLOAD_TOO_LARGE');
     }
+    batch.set(shareRef, safeData);
+    await batch.commit();
   };
 
   const timeoutPromise = new Promise<never>((_, reject) => 
-    setTimeout(() => reject(new Error('TIMEOUT')), 60000)
+    setTimeout(() => reject(new Error('TIMEOUT')), 15000)
   );
 
   await Promise.race([
