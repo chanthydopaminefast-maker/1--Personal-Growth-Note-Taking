@@ -1,5 +1,45 @@
 // URL-Safe Base64 encoder and decoder with full Unicode/UTF-8 support
 
+export const copyToClipboard = async (text: string): Promise<boolean> => {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (err) {
+      console.warn("navigator.clipboard.writeText failed, using fallback:", err);
+    }
+  }
+
+  // Robust fallback using temporary textarea
+  try {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    
+    // Position out of sight
+    textArea.style.position = "fixed";
+    textArea.style.top = "0";
+    textArea.style.left = "0";
+    textArea.style.width = "2em";
+    textArea.style.height = "2em";
+    textArea.style.padding = "0";
+    textArea.style.border = "none";
+    textArea.style.outline = "none";
+    textArea.style.boxShadow = "none";
+    textArea.style.background = "transparent";
+    
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    
+    const successful = document.execCommand('copy');
+    document.body.removeChild(textArea);
+    return !!successful;
+  } catch (err) {
+    console.error("Fallback copy to clipboard failed:", err);
+    return false;
+  }
+};
+
 export const encodeToURLSafeBase64 = (obj: any): string => {
   try {
     const str = JSON.stringify(obj);

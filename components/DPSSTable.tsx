@@ -4,6 +4,7 @@ import { AppData, DPSSTopic } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { callNeuralEngine } from '../services/neuralEngine';
 import { compressImage } from '../services/imageUtils';
+import { copyToClipboard } from '../services/sharingEncoder';
 import { PAPER_STYLES } from '../src/styles/paperStyles';
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
@@ -4215,13 +4216,17 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                 type="text" 
                 readOnly 
                 value={generatedShareLink} 
-                className="flex-1 bg-transparent text-xs text-slate-705 dark:text-slate-300 outline-none select-all truncate pr-2 font-mono"
+                className="flex-1 bg-transparent text-xs text-slate-700 dark:text-slate-300 outline-none select-all truncate pr-2 font-mono"
               />
               <button 
-                onClick={() => {
-                  navigator.clipboard.writeText(generatedShareLink);
-                  setIsCopied(true);
-                  setTimeout(() => setIsCopied(false), 2000);
+                onClick={async () => {
+                  const success = await copyToClipboard(generatedShareLink);
+                  if (success) {
+                    setIsCopied(true);
+                    setTimeout(() => setIsCopied(false), 2000);
+                  } else {
+                    alert("Unable to copy automatically. Please copy the link manually from the input field.");
+                  }
                 }}
                 className="h-8 px-4 bg-orange-500 hover:bg-orange-600 active:scale-95 text-white text-[10px] uppercase font-black tracking-widest rounded-xl transition-all"
               >

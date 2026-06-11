@@ -10,6 +10,7 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 import html2pdf from 'html2pdf.js';
 import { callNeuralEngine } from '../services/neuralEngine';
 import { ConfettiOverlay } from './ConfettiOverlay';
+import { copyToClipboard } from '../services/sharingEncoder';
 
 const AMBIENT_WALLPAPERS = [
   { name: 'Beach Sunset', url: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&q=80&w=2000' },
@@ -2370,13 +2371,17 @@ export const HabitTracker: React.FC<HabitTrackerProps> = ({ data, onUpdate, onUp
                 type="text" 
                 readOnly 
                 value={generatedShareLink} 
-                className="flex-1 bg-transparent text-xs text-slate-705 dark:text-slate-300 outline-none select-all truncate pr-2 font-mono"
+                className="flex-1 bg-transparent text-xs text-slate-700 dark:text-slate-300 outline-none select-all truncate pr-2 font-mono"
               />
               <button 
-                onClick={() => {
-                  navigator.clipboard.writeText(generatedShareLink);
-                  setIsCopied(true);
-                  setTimeout(() => setIsCopied(false), 2000);
+                onClick={async () => {
+                  const success = await copyToClipboard(generatedShareLink);
+                  if (success) {
+                    setIsCopied(true);
+                    setTimeout(() => setIsCopied(false), 2000);
+                  } else {
+                    alert("Unable to copy automatically. Please copy the link manually from the input field.");
+                  }
                 }}
                 className="h-8 px-4 bg-orange-500 hover:bg-orange-600 active:scale-95 text-white text-[10px] uppercase font-black tracking-widest rounded-xl transition-all"
               >
