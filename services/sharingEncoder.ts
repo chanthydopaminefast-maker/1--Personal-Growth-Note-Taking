@@ -15,10 +15,10 @@ export const copyToClipboard = async (text: string): Promise<boolean> => {
     const textArea = document.createElement("textarea");
     textArea.value = text;
     
-    // Position out of sight
+    // Position cleanly off-screen using secure margins
     textArea.style.position = "fixed";
-    textArea.style.top = "0";
-    textArea.style.left = "0";
+    textArea.style.top = "-9999px";
+    textArea.style.left = "-9999px";
     textArea.style.width = "2em";
     textArea.style.height = "2em";
     textArea.style.padding = "0";
@@ -30,9 +30,24 @@ export const copyToClipboard = async (text: string): Promise<boolean> => {
     document.body.appendChild(textArea);
     textArea.focus();
     textArea.select();
+
+    // iOS Compatibility Selection Range
+    const range = document.createRange();
+    range.selectNodeContents(textArea);
+    const selection = window.getSelection();
+    if (selection) {
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }
+    textArea.setSelectionRange(0, 999999);
     
     const successful = document.execCommand('copy');
     document.body.removeChild(textArea);
+    
+    if (selection) {
+      selection.removeAllRanges();
+    }
+    
     return !!successful;
   } catch (err) {
     console.error("Fallback copy to clipboard failed:", err);

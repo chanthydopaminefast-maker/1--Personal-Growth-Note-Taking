@@ -706,14 +706,14 @@ export const getSyncStatus = () => !isOffline;
 const stripMassiveImages = (obj: any): any => {
   if (obj === null || obj === undefined) return obj;
   if (typeof obj === 'string') {
-    // If it's a massive base64 string or data URL
-    if (obj.startsWith('data:image/') && obj.length > 50000) {
+    // If it's a massive base64 string or data URL (stripping everything above 1000 characters)
+    if (obj.startsWith('data:image/') && obj.length > 1000) {
       return 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100%" height="100%" fill="%23f1f5f9"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="8" fill="%2364748b">[Image Removed]</text></svg>';
     }
     // Also check for embedded markdown or HTML img tags with huge base64 src
     if (obj.includes('data:image/')) {
       return obj.replace(/data:image\/[^;]+;base64,[^"\s>)]+/g, (match) => {
-        if (match.length > 50000) {
+        if (match.length > 1000) {
           return 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100%" height="100%" fill="%23f1f5f9"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="8" fill="%2364748b">[Image Removed]</text></svg>';
         }
         return match;
@@ -782,11 +782,17 @@ export const createSharedNote = async (
     throw new Error('PAYLOAD_TOO_LARGE');
   }
 
-  // Fire-and-forget write with background logging. This ensures the sharing action resolves
-  // instantly (0.01s) without waiting for server responses or timing out, allowing robust instant copy.
-  setDoc(shareRef, safeData).catch((error) => {
-    console.error("Firestore sharing background write error:", error);
-  });
+  // Explicitly write to Firestore and await with a robust 3-second timeout.
+  // If the cloud write fails or times out, we throw an error so that the caller's catch block
+  // triggers the 100% reliable self-contained encoded fallback link.
+  const timeoutPromise = new Promise<never>((_, reject) => 
+    setTimeout(() => reject(new Error('TIMEOUT')), 3000)
+  );
+
+  await Promise.race([
+    setDoc(shareRef, safeData),
+    timeoutPromise
+  ]);
   
   return shareId;
 };

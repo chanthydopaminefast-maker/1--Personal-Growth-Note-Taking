@@ -4216,7 +4216,9 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                 type="text" 
                 readOnly 
                 value={generatedShareLink} 
-                className="flex-1 bg-transparent text-xs text-slate-700 dark:text-slate-300 outline-none select-all truncate pr-2 font-mono"
+                onClick={(e) => (e.target as HTMLInputElement).select()}
+                className="flex-1 bg-transparent text-xs text-slate-700 dark:text-slate-300 outline-none select-all truncate pr-2 font-mono cursor-pointer"
+                title="Click to select all text"
               />
               <button 
                 onClick={async () => {
