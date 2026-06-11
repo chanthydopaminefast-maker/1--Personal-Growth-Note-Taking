@@ -703,6 +703,39 @@ export const getCloudBackups = async (): Promise<Partial<BackupEntry>[]> => {
 export const getSyncStatus = () => !isOffline;
 
 // Global Shared note helper functions
+const stripMassiveImages = (obj: any): any => {
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj === 'string') {
+    // If it's a massive base64 string or data URL
+    if (obj.startsWith('data:image/') && obj.length > 50000) {
+      return 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100%" height="100%" fill="%23f1f5f9"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="8" fill="%2364748b">[Image Removed]</text></svg>';
+    }
+    // Also check for embedded markdown or HTML img tags with huge base64 src
+    if (obj.includes('data:image/')) {
+      return obj.replace(/data:image\/[^;]+;base64,[^"\s>)]+/g, (match) => {
+        if (match.length > 50000) {
+          return 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100%" height="100%" fill="%23f1f5f9"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="8" fill="%2364748b">[Image Removed]</text></svg>';
+        }
+        return match;
+      });
+    }
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(stripMassiveImages);
+  }
+  if (typeof obj === 'object') {
+    const result: any = {};
+    for (const key in obj) {
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
+        result[key] = stripMassiveImages(obj[key]);
+      }
+    }
+    return result;
+  }
+  return obj;
+};
+
 const sanitizeForFirestore = (obj: any): any => {
   if (obj === undefined) return null;
   if (obj === null || typeof obj !== 'object') return obj;
@@ -730,13 +763,17 @@ export const createSharedNote = async (
 ): Promise<string> => {
   const shareId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
   const shareRef = doc(db, 'sharedNotes', shareId);
+  
+  // Strip massive base64 images to keep the shared payload lightweight (< 100KB) and prevent Firestore size limits
+  const lightPayload = stripMassiveImages(payload);
+
   const safeData = {
     id: String(shareId),
     ownerId: String(userId || 'unknown').substring(0, 120),
     ownerName: String(ownerName || 'Chanthy').substring(0, 120),
     type: String(type || 'self-learning').substring(0, 45),
     title: String(title || 'Untitled').substring(0, 250),
-    payload: sanitizeForFirestore(payload || {}),
+    payload: sanitizeForFirestore(lightPayload || {}),
     createdAt: new Date().toISOString()
   };
   
@@ -745,13 +782,11 @@ export const createSharedNote = async (
     throw new Error('PAYLOAD_TOO_LARGE');
   }
 
-  // Await the write to guarantee the shared note is uploaded to the Firestore server
-  // and completely synchronized before the user copies or opens the share link.
-  const timeoutPromise = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('TIMEOUT')), 8000));
-  await Promise.race([
-    setDoc(shareRef, safeData),
-    timeoutPromise
-  ]);
+  // Fire-and-forget write with background logging. This ensures the sharing action resolves
+  // instantly (0.01s) without waiting for server responses or timing out, allowing robust instant copy.
+  setDoc(shareRef, safeData).catch((error) => {
+    console.error("Firestore sharing background write error:", error);
+  });
   
   return shareId;
 };

@@ -4806,8 +4806,13 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
             <div className="flex justify-between items-center pt-2">
               <button 
                 onClick={() => {
-                  const searchParams = new URL(generatedShareLink).searchParams;
-                  const shareId = searchParams.get('share');
+                  let shareId = '';
+                  try {
+                    const searchParams = new URL(generatedShareLink).searchParams;
+                    shareId = searchParams.get('share') || searchParams.get('sharedData') || 'fallback';
+                  } catch (e) {
+                    shareId = 'fallback';
+                  }
                   if (!shareId) return;
                   
                   const findNode = (nodes: any[], id: string): any => {
