@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { 
   getFirestore,
+  enableIndexedDbPersistence,
   doc, 
   onSnapshot, 
   setDoc, 
@@ -18,8 +19,17 @@ import { storage } from './storage';
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firestore using standard getFirestore to prevent multi-tab cache locks inside iframe sandbox environments
+// Initialize Firestore
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+// Enable offline persistence so data isn't lost during connection blips or reloads
+enableIndexedDbPersistence(db).catch((err) => {
+  if (err.code == 'failed-precondition') {
+    console.warn('Multiple tabs open, persistence can only be enabled in one tab at a a time.');
+  } else if (err.code == 'unimplemented') {
+    console.warn('The current browser does not support all of the features required to enable persistence');
+  }
+});
 
 export const auth = getAuth(app);
 // Explicitly set persistence to LOCAL to ensure sessions survive reloads/redeploys
@@ -519,6 +529,8 @@ export const saveJournalEntry = async (userId: string, date: string, entry: any)
   }
 };
 
+const saveTimeouts = new Map<string, NodeJS.Timeout>();
+
 export const saveTopic = async (userId: string, topic: any, category: 'dpss' | 'selfLearning' = 'dpss') => {
   if (!userId || !topic || !topic.id) return;
   
@@ -532,14 +544,31 @@ export const saveTopic = async (userId: string, topic: any, category: 'dpss' | '
     updateLocalCache(userId, { [field]: topics });
   }
 
-  try {
-    const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
-    const docRef = doc(db, 'users', userId, coll, topic.id);
-    await setDoc(docRef, topic, { merge: true });
-  } catch (error) {
-    const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
-    handleFirestoreError(error, OperationType.WRITE, `users/${userId}/${coll}/${topic.id}`);
+  const topicKey = `${category}_${topic.id}`;
+  if (saveTimeouts.has(topicKey)) {
+    clearTimeout(saveTimeouts.get(topicKey)!);
   }
+
+  saveTimeouts.set(topicKey, setTimeout(async () => {
+    try {
+      const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
+      const docRef = doc(db, 'users', userId, coll, topic.id);
+      
+      const sizeBytes = new Blob([JSON.stringify(topic)]).size;
+      if (sizeBytes > 950000) {
+        console.error(`Document ${topic.id} is too large (${sizeBytes} bytes).`);
+        window.dispatchEvent(new CustomEvent('PAYLOAD_TOO_LARGE', { detail: { id: topic.id, title: topic.title || 'Topic' } }));
+        return; // Skip saving to Firestore to prevent crashing connection
+      }
+      
+      await setDoc(docRef, topic, { merge: true });
+    } catch (error) {
+      const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
+      handleFirestoreError(error, OperationType.WRITE, `users/${userId}/${coll}/${topic.id}`);
+    } finally {
+      saveTimeouts.delete(topicKey);
+    }
+  }, 800));
 };
 
 export const deleteTopic = async (userId: string, topicId: string, category: 'dpss' | 'selfLearning' = 'dpss') => {
@@ -710,7 +739,18 @@ export const createSharedNote = async (
     payload: sanitizeForFirestore(payload || {}),
     createdAt: new Date().toISOString()
   };
-  await setDoc(shareRef, safeData);
+  
+  const sizeBytes = new Blob([JSON.stringify(safeData)]).size;
+  if (sizeBytes > 950000) {
+    throw new Error('PAYLOAD_TOO_LARGE');
+  }
+
+  // Fire off the setDoc operation asynchronously and resolve the link instantly.
+  // This guarantees sharing link is generated in 0.01s, even on super unstable/offline connections.
+  setDoc(shareRef, safeData).catch(err => {
+    console.error("Firestore sharing background upload failed:", err);
+  });
+  
   return shareId;
 };
 

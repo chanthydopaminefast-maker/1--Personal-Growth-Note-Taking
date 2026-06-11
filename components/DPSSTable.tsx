@@ -3,6 +3,7 @@ import { Plus, Trash2, Calendar, AlignLeft, AlignCenter, AlignRight, Highlighter
 import { AppData, DPSSTopic } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { callNeuralEngine } from '../services/neuralEngine';
+import { compressImage } from '../services/imageUtils';
 import { PAPER_STYLES } from '../src/styles/paperStyles';
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
@@ -66,6 +67,14 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
   const [isArchiveFolderOpen, setIsArchiveFolderOpen] = useState(false);
   const [editingTopicId, setEditingTopicId] = useState<string | null>(null);
   const [editingTopicTitle, setEditingTopicTitle] = useState<string>('');
+  
+  const [mainEditorTitle, setMainEditorTitle] = useState<string>('');
+  useEffect(() => {
+     if (selectedTopicId) {
+        const found = findTopic(data.dpssTopics || [], selectedTopicId);
+        if (found) setMainEditorTitle(found.title);
+     }
+  }, [selectedTopicId]);
   const [activeTableCell, setActiveTableCell] = useState<HTMLTableCellElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isResizing = useRef(false);
@@ -1591,20 +1600,17 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     try {
       const { createSharedNote } = await import('../services/firebase');
       
-      const timeoutPromise = new Promise<never>((_, reject) => 
-        setTimeout(() => reject(new Error('timeout')), 5000)
-      );
-
-      const shareId = await Promise.race([
-        createSharedNote(userId, userName, 'note-taking', topic.title, topic),
-        timeoutPromise
-      ]);
+      const shareId = await createSharedNote(userId, userName, 'note-taking', topic.title, topic);
       
       const link = window.location.origin + window.location.pathname + '?share=' + shareId;
       setGeneratedShareLink(link);
     } catch (error: any) {
       console.error("Firestore sharing failed:", error);
-      alert("Failed to create shareable link. Please ensure your database is connected and available.");
+      if (error.message === 'PAYLOAD_TOO_LARGE') {
+          alert("Failed to share: The note is too large (likely due to many large images). Please remove some images or share smaller sub-topics.");
+      } else {
+          alert("Failed to create shareable link. Please ensure your connection is active.");
+      }
     } finally {
       setSharingTopicId(null);
     }
@@ -1678,49 +1684,86 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     });
   };
 
+  const handlePaste = async (e: React.ClipboardEvent<HTMLDivElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+            const file = items[i].getAsFile();
+            if (file) {
+                e.preventDefault(); // Stop default massive base64 injection
+                try {
+                    const dataUrl = await compressImage(file, 800, 0.7);
+                    const html = `<div style="margin: 15px 0; text-align: center;"><img src="${dataUrl}" alt="pasted image" style="max-width: 100%; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);" /></div><p><br></p>`;
+                    document.execCommand('insertHTML', false, html);
+                } catch (err) {
+                    console.error("Paste compression error:", err);
+                }
+                break;
+            }
+        }
+    }
+  };
+
   const selectedTopic = selectedTopicId ? findTopic(topics, selectedTopicId) : null;
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0 || !selectedTopic) return;
 
     const file = files[0];
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const dataUrl = event.target?.result as string;
-      let html = '';
-      
-      try {
-        if (file.type.startsWith('image/')) {
-            html = `<div style="margin: 15px 0; text-align: center;"><img src="${dataUrl}" alt="uploaded image" style="max-width: 100%; max-height: 400px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);" /></div><p><br></p>`;
-        } else if (file.type.startsWith('video/')) {
-            html = `<div contenteditable="false" style="margin: 15px 0; text-align: center;"><video controls src="${dataUrl}" style="max-width: 100%; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);"></video></div><p><br></p>`;
-        } else if (file.type.startsWith('audio/')) {
-            html = `<div contenteditable="false" style="margin: 15px 0; text-align: center; background: rgba(255,255,255,0.4); padding: 15px; border-radius: 50px;"><audio controls src="${dataUrl}" style="width: 100%; outline: none;"></audio></div><p><br></p>`;
-        } else {
-            // General file link (PDF, MS Word)
-            html = `<div contenteditable="false" style="margin: 15px 0; padding: 12px 16px; background: rgba(255, 237, 213, 0.8); border: 1px solid rgba(0,0,0,0.1); border-radius: 8px; display: inline-block;">
-                <a href="${dataUrl}" download="${file.name}" target="_blank" rel="noopener noreferrer" style="color: #f97316; font-weight: bold; text-decoration: none;">📎 Open/Download: ${file.name}</a>
-            </div><p><br></p>`;
-        }
-        if (editorRef.current) {
-          editorRef.current.focus();
-          if (savedRange.current) {
-            const selection = window.getSelection();
-            selection?.removeAllRanges();
-            selection?.addRange(savedRange.current);
-          }
-        }
-        document.execCommand('insertHTML', false, html);
-        if (editorRef.current) {
-           updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
-        }
-      } catch (err) {
-        console.error("Storage error:", err);
-        alert("File may be too large to save in local storage. Consider using Firebase.");
+    let dataUrl = '';
+    
+    try {
+      if (file.type.startsWith('image/')) {
+        dataUrl = await compressImage(file, 800, 0.7);
+      } else {
+        // Read as data URL for non-images (which might fail if too large)
+        dataUrl = await new Promise<string>((resolve, reject) => {
+           const reader = new FileReader();
+           reader.onload = (event) => resolve(event.target?.result as string);
+           reader.onerror = reject;
+           reader.readAsDataURL(file);
+        });
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (e) {
+      console.error(e);
+      alert('Failed to process file.');
+      return;
+    }
+
+    let html = '';
+    try {
+      if (file.type.startsWith('image/')) {
+          html = `<div style="margin: 15px 0; text-align: center;"><img src="${dataUrl}" alt="uploaded image" style="max-width: 100%; max-height: 400px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);" /></div><p><br></p>`;
+      } else if (file.type.startsWith('video/')) {
+          html = `<div contenteditable="false" style="margin: 15px 0; text-align: center;"><video controls src="${dataUrl}" style="max-width: 100%; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);"></video></div><p><br></p>`;
+      } else if (file.type.startsWith('audio/')) {
+          html = `<div contenteditable="false" style="margin: 15px 0; text-align: center; background: rgba(255,255,255,0.4); padding: 15px; border-radius: 50px;"><audio controls src="${dataUrl}" style="width: 100%; outline: none;"></audio></div><p><br></p>`;
+      } else {
+          html = `<div contenteditable="false" style="margin: 15px 0; padding: 12px 16px; background: rgba(255, 237, 213, 0.8); border: 1px solid rgba(0,0,0,0.1); border-radius: 8px; display: inline-block;">
+              <a href="${dataUrl}" download="${file.name}" target="_blank" rel="noopener noreferrer" style="color: #f97316; font-weight: bold; text-decoration: none;">📎 Open/Download: ${file.name}</a>
+          </div><p><br></p>`;
+      }
+      
+      if (editorRef.current) {
+        editorRef.current.focus();
+        if (savedRange.current) {
+          const selection = window.getSelection();
+          selection?.removeAllRanges();
+          selection?.addRange(savedRange.current);
+        }
+      }
+      document.execCommand('insertHTML', false, html);
+      if (editorRef.current) {
+         updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+      }
+    } catch (err) {
+      console.error("Storage error:", err);
+      alert("File may be too large to save in local storage. Consider using Firebase.");
+    }
+    
     e.target.value = ''; // reset
   };
 
@@ -2677,7 +2720,10 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
             )}
           </div>
 
-          <div className="flex gap-1 shrink-0">
+          <div className="flex gap-[6px] shrink-0 items-center">
+            <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-950 px-1.5 py-0.5 rounded-lg border border-slate-200/50 dark:border-slate-800 scale-90 shrink-0 select-none" title="Size of this folder/file including subtopics">
+               {(new Blob([JSON.stringify(topic)]).size / 1024).toFixed(0)} KB
+            </span>
             {isSelected && (
               <div className="relative shrink-0">
                 <button 
@@ -2948,18 +2994,29 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                 <div className="flex items-center gap-2 md:gap-4 px-2 mt-14 md:mt-0">
                   {!isSidebarOpen && <div className="w-12 md:hidden shrink-0" />} {/* Spacer for the absolute menu button */}
                   <input 
-                      value={selectedTopic.title} 
-                      onChange={(e) => updateTopic(selectedTopic.id, { title: e.target.value })}
+                      value={mainEditorTitle} 
+                      onChange={(e) => setMainEditorTitle(e.target.value)}
+                      onBlur={() => {
+                        if (selectedTopic.title !== mainEditorTitle) {
+                           updateTopic(selectedTopic.id, { title: mainEditorTitle });
+                        }
+                      }}
+                      onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
                       className="flex-1 text-2xl md:text-4xl font-black text-slate-100 bg-transparent outline-none p-2 border-b-2 border-orange-500/20 focus:border-orange-500 transition-all min-w-0"
                       placeholder="Topic Title..."
                   />
-                  <button
-                    onClick={() => setIsToolbarHidden(!isToolbarHidden)}
-                    className={`p-2 shrink-0 ${isToolbarHidden ? 'bg-orange-100 text-orange-600 hover:bg-orange-200' : 'bg-white/50 text-slate-500 hover:bg-white'} rounded-xl transition-all shadow-sm`}
-                    title={isToolbarHidden ? "Show Toolbar" : "Full Screen (Hide Toolbar)"}
-                  >
-                    {isToolbarHidden ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-400 bg-white/20 px-2 py-1 rounded-lg">
+                       {(new Blob([JSON.stringify(selectedTopic)]).size / 1024).toFixed(0)} KB
+                    </span>
+                    <button
+                      onClick={() => setIsToolbarHidden(!isToolbarHidden)}
+                      className={`p-2 shrink-0 ${isToolbarHidden ? 'bg-orange-100 text-orange-600 hover:bg-orange-200' : 'bg-white/50 text-slate-500 hover:bg-white'} rounded-xl transition-all shadow-sm`}
+                      title={isToolbarHidden ? "Show Toolbar" : "Full Screen (Hide Toolbar)"}
+                    >
+                      {isToolbarHidden ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+                    </button>
+                  </div>
                 </div>
                 
                 {!isToolbarHidden && (
@@ -3931,6 +3988,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                     onMouseUp={handleSelection}
                     onKeyUp={handleSelection}
                     onKeyDown={handleEditorKeyDown}
+                    onPaste={handlePaste}
                     onMouseMove={handleEditorMouseMove}
                     onMouseDown={handleEditorMouseDown}
                     onTouchStart={handleEditorTouchStart}
