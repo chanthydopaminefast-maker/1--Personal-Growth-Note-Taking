@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Zap, Plus, Trash2, Calendar, AlignLeft, AlignCenter, AlignRight, Highlighter, MousePointer2, Minus, Layout, Square, Quote, Settings2, FileUp, FileDown, Image as ImageIcon, Video, Music, FileText, Loader2, Wand2, Menu, ChevronLeft, GraduationCap, ChevronRight, Table, Grid3X3, Columns, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Palette, Italic, Underline, Strikethrough, Indent, Outdent, List, ListOrdered, CheckSquare, ChevronDown, MoreHorizontal, Download, Maximize2, Minimize2, Search, Archive, Folder, Star, Share2, Pencil, Lock, Unlock, ArrowRightLeft, Copy } from 'lucide-react';
+import { Zap, Plus, Trash2, Calendar, AlignLeft, AlignCenter, AlignRight, Highlighter, MousePointer2, Minus, Layout, Square, Quote, Settings2, FileUp, FileDown, Image as ImageIcon, Video, Music, FileText, Loader2, Wand2, Menu, ChevronLeft, GraduationCap, ChevronRight, Table, Grid3X3, Columns, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Palette, Italic, Underline, Strikethrough, Indent, Outdent, List, ListOrdered, CheckSquare, ChevronDown, MoreHorizontal, Download, Maximize2, Minimize2, Search, Archive, Folder, Star, Share2, Pencil, Lock, Unlock, ArrowRightLeft, Copy, GripVertical } from 'lucide-react';
 import { AppData, DPSSTopic } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { callNeuralEngine } from '../services/neuralEngine';
@@ -2945,32 +2945,52 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
     };
     
     const updated = updateSiblings(data.selfLearningTopics || []);
-    if (onUpdateTopic) {
-      const root = findRootTopic(updated, id);
-      onUpdateTopic(updated, root || undefined);
-    } else {
-      onUpdate({ ...data, selfLearningTopics: updated });
-    }
+    onUpdate({ ...data, selfLearningTopics: updated });
   };
 
   const [draggedTopicId, setDraggedTopicId] = useState<string | null>(null);
+  const [dragOverTopicId, setDragOverTopicId] = useState<string | null>(null);
 
   const handleDragStart = (e: React.DragEvent, id: string) => {
+    e.stopPropagation();
     setDraggedTopicId(id);
     e.dataTransfer.setData('text/plain', id);
     e.dataTransfer.effectAllowed = 'move';
+
+    const dragIcon = document.createElement('div');
+    dragIcon.style.opacity = '0';
+    document.body.appendChild(dragIcon);
+    e.dataTransfer.setDragImage(dragIcon, 0, 0);
+    setTimeout(() => document.body.removeChild(dragIcon), 0);
   };
 
-  const handleDragOver = (e: React.DragEvent, targetId: string) => {
-    if (draggedTopicId === targetId) return;
+  const handleDragOver = (e: React.DragEvent, targetId: string | null) => {
     e.preventDefault();
+    e.stopPropagation();
+    if (draggedTopicId === targetId) return;
+    if (dragOverTopicId !== targetId) {
+      setDragOverTopicId(targetId);
+    }
     e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDragLeave = (e: React.DragEvent, targetId: string | null) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (dragOverTopicId === targetId) {
+      setDragOverTopicId(null);
+    }
   };
 
   const handleDrop = (e: React.DragEvent, targetParentId: string | null) => {
     e.preventDefault();
+    e.stopPropagation();
+    setDragOverTopicId(null);
     const sourceId = e.dataTransfer.getData('text/plain') || draggedTopicId;
-    if (!sourceId || sourceId === targetParentId) return;
+    if (!sourceId || sourceId === targetParentId) {
+      setDraggedTopicId(null);
+      return;
+    }
 
     // Recursive search to ensure we're not dropping a parent into its own child
     const isChildOf = (parentId: string, targetId: string): boolean => {
@@ -2981,6 +3001,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
 
     if (targetParentId && isChildOf(sourceId, targetParentId)) {
       alert("Cannot move a folder into its own sub-folder!");
+      setDraggedTopicId(null);
       return;
     }
 
@@ -2996,7 +3017,10 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
     };
 
     const topicToMove = findSpecificTopic(data.selfLearningTopics || [], sourceId);
-    if (!topicToMove) return;
+    if (!topicToMove) {
+      setDraggedTopicId(null);
+      return;
+    }
 
     // 1. Remove from old position
     const removeTopic = (items: DPSSTopic[]): DPSSTopic[] => {
@@ -3025,13 +3049,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
     };
 
     updated = addTopicToTarget(updated);
-
-    if (onUpdateTopic) {
-      const root = findRootTopic(updated, sourceId);
-      onUpdateTopic(updated, root || undefined);
-    } else {
-      onUpdate({ ...data, selfLearningTopics: updated });
-    }
+    onUpdate({ ...data, selfLearningTopics: updated });
     setDraggedTopicId(null);
   };
 
@@ -3153,12 +3171,17 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
     return (
       <div 
         key={topic.id} 
-        className={`select-none transition-all duration-200 ${draggedTopicId === topic.id ? 'opacity-30' : 'opacity-100'}`} 
+        className={`select-none transition-all duration-200 ${draggedTopicId === topic.id ? 'opacity-30' : 'opacity-100'} ${dragOverTopicId === topic.id ? 'ring-2 ring-indigo-500 rounded-xl bg-indigo-50/50 dark:bg-indigo-900/20' : ''}`} 
         style={{ marginLeft: `${depth * 8}px` }}
         draggable={!topic.isLocked}
         onDragStart={(e) => handleDragStart(e, topic.id)}
         onDragOver={(e) => handleDragOver(e, topic.id)}
+        onDragLeave={(e) => handleDragLeave(e, topic.id)}
         onDrop={(e) => handleDrop(e, topic.id)}
+        onDragEnd={() => {
+          setDraggedTopicId(null);
+          setDragOverTopicId(null);
+        }}
       >
         <div 
           onClick={() => {
@@ -3175,6 +3198,11 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
           }`}
         >
           <div className="flex items-center gap-1.5 min-w-0 flex-1">
+            {!topic.isLocked && (
+              <div className="cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500 transition-colors shrink-0 flex items-center justify-center p-1 -ml-1">
+                <GripVertical size={14} />
+              </div>
+            )}
             {hasChildren ? (
               <button 
                 onClick={(e) => {
@@ -3652,8 +3680,9 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
 
           {/* Active Topics */}
           <div 
-            className="space-y-1 min-h-[50px] outline-none"
-            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+            className={`space-y-1 min-h-[50px] outline-none rounded-xl transition-all ${dragOverTopicId === null && draggedTopicId ? 'ring-2 ring-indigo-400/50 bg-indigo-50/30' : ''}`}
+            onDragOver={(e) => handleDragOver(e, null)}
+            onDragLeave={(e) => handleDragLeave(e, null)}
             onDrop={(e) => handleDrop(e, null)}
           >
             {filteredTopics.length > 0 ? (
