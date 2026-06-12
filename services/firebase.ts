@@ -1,7 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { 
   getFirestore,
-  enableIndexedDbPersistence,
   doc, 
   onSnapshot, 
   setDoc, 
@@ -19,17 +18,8 @@ import { storage } from './storage';
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firestore
+// Initialize Firestore using standard getFirestore to prevent multi-tab cache locks inside iframe sandbox environments
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
-
-// Enable offline persistence so data isn't lost during connection blips or reloads
-enableIndexedDbPersistence(db).catch((err) => {
-  if (err.code == 'failed-precondition') {
-    console.warn('Multiple tabs open, persistence can only be enabled in one tab at a a time.');
-  } else if (err.code == 'unimplemented') {
-    console.warn('The current browser does not support all of the features required to enable persistence');
-  }
-});
 
 export const auth = getAuth(app);
 // Explicitly set persistence to LOCAL to ensure sessions survive reloads/redeploys

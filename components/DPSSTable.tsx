@@ -1591,14 +1591,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     try {
       const { createSharedNote } = await import('../services/firebase');
       
-      const timeoutPromise = new Promise<never>((_, reject) => 
-        setTimeout(() => reject(new Error('timeout')), 5000)
-      );
-
-      const shareId = await Promise.race([
-        createSharedNote(userId, userName, 'note-taking', topic.title, topic),
-        timeoutPromise
-      ]);
+      const shareId = await createSharedNote(userId, userName, 'note-taking', topic.title, topic);
       
       const link = window.location.origin + window.location.pathname + '?share=' + shareId;
       setGeneratedShareLink(link);

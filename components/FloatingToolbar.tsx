@@ -141,19 +141,18 @@ export const FloatingToolbar = () => {
 
         const fontTags = document.querySelectorAll('font');
         fontTags.forEach(tag => {
-            const htmlTag = tag as HTMLElement;
-            if (htmlTag.hasAttribute('face')) {
+            if (tag.hasAttribute('face')) {
                 const span = document.createElement('span');
-                span.style.fontFamily = htmlTag.getAttribute('face') || font;
+                span.style.fontFamily = tag.getAttribute('face') || font;
                 
                 // Copy any other styles on the old tag that might be there
-                if (htmlTag.hasAttribute('size')) span.style.fontSize = htmlTag.style.fontSize;
-                if (htmlTag.hasAttribute('color')) span.style.color = htmlTag.style.color;
+                if (tag.hasAttribute('size')) span.style.fontSize = tag.style.fontSize;
+                if (tag.hasAttribute('color')) span.style.color = tag.style.color;
                 
-                while (htmlTag.firstChild) {
-                    span.appendChild(htmlTag.firstChild);
+                while (tag.firstChild) {
+                    span.appendChild(tag.firstChild);
                 }
-                htmlTag.parentNode?.replaceChild(span, htmlTag);
+                tag.parentNode?.replaceChild(span, tag);
             }
         });
 
@@ -173,13 +172,12 @@ export const FloatingToolbar = () => {
 
         const fontTags = document.querySelectorAll('font[size="7"]');
         fontTags.forEach(tag => {
-            const htmlTag = tag as HTMLElement;
             const span = document.createElement('span');
             span.style.fontSize = `${size}px`;
             
             // Apply other preserved styles
-            if (htmlTag.hasAttribute('face')) span.style.fontFamily = htmlTag.style.fontFamily;
-            if (htmlTag.hasAttribute('color')) span.style.color = htmlTag.style.color;
+            if (tag.hasAttribute('face')) span.style.fontFamily = tag.style.fontFamily;
+            if (tag.hasAttribute('color')) span.style.color = tag.style.color;
             
             while (tag.firstChild) {
                 span.appendChild(tag.firstChild);
