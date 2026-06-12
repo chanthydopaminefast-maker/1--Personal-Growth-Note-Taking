@@ -2929,10 +2929,11 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                   setEditingTopicId(topic.id);
                   setEditingTopicTitle(topic.title);
                 }}
-                className="font-bold text-[12px] truncate flex-1 min-w-0" 
+                className="font-bold text-[12px] truncate flex-1 min-w-0 flex items-center gap-1.5" 
                 title={topic.title}
               >
                 {topic.title}
+                {topic.isLocked && <Lock size={10} className="text-slate-400 shrink-0" />}
               </span>
             )}
           </div>
