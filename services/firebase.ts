@@ -518,7 +518,7 @@ export const saveTopic = async (userId: string, topic: any, category: 'dpss' | '
   try {
     const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
     const docRef = doc(db, 'users', userId, coll, topic.id);
-    await setDoc(docRef, topic, { merge: true });
+    await setDoc(docRef, topic);
   } catch (error) {
     const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
     handleFirestoreError(error, OperationType.WRITE, `users/${userId}/${coll}/${topic.id}`);
@@ -542,6 +542,60 @@ export const deleteTopic = async (userId: string, topicId: string, category: 'dp
   } catch (error) {
     const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
     handleFirestoreError(error, OperationType.DELETE, `users/${userId}/${coll}/${topicId}`);
+  }
+};
+
+export const saveTopicsBulk = async (
+  userId: string,
+  topicsToSave: { topic: any; category: 'dpss' | 'selfLearning' }[],
+  topicIdsToDelete: { id: string; category: 'dpss' | 'selfLearning' }[]
+) => {
+  if (!userId) return;
+
+  const sub = activeSubscriptions.get(userId);
+  if (sub) {
+    let dpssTopics = [...(sub.currentData.dpssTopics || [])];
+    let selfLearningTopics = [...(sub.currentData.selfLearningTopics || [])];
+
+    topicsToSave.forEach(({ topic, category }) => {
+      const arr = category === 'dpss' ? dpssTopics : selfLearningTopics;
+      const idx = arr.findIndex((t: any) => String(t.id) === String(topic.id));
+      if (idx !== -1) {
+        arr[idx] = topic;
+      } else {
+        arr.push(topic);
+      }
+    });
+
+    topicIdsToDelete.forEach(({ id, category }) => {
+      if (category === 'dpss') {
+        dpssTopics = dpssTopics.filter((t: any) => String(t.id) !== String(id));
+      } else {
+        selfLearningTopics = selfLearningTopics.filter((t: any) => String(t.id) !== String(id));
+      }
+    });
+
+    updateLocalCache(userId, { dpssTopics, selfLearningTopics });
+  }
+
+  const batch = writeBatch(db);
+
+  topicsToSave.forEach(({ topic, category }) => {
+    const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
+    const docRef = doc(db, 'users', userId, coll, topic.id);
+    batch.set(docRef, topic);
+  });
+
+  topicIdsToDelete.forEach(({ id, category }) => {
+    const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
+    const docRef = doc(db, 'users', userId, coll, id);
+    batch.delete(docRef);
+  });
+
+  try {
+    await batch.commit();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `users/${userId}/topics/bulk`);
   }
 };
 

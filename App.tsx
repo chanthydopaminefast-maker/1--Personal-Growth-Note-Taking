@@ -473,7 +473,7 @@ const App: React.FC = () => {
         storage.setItem('dps_data', JSON.stringify(newData));
 
         if (currentUser?.uid) {
-          import('./services/firebase').then(({ saveStudent, saveData, saveTopic, deleteTopic, saveAttendance, saveDailyNote, saveHabitCompletionBulk, saveHabitList, deleteHabit }) => {
+          import('./services/firebase').then(({ saveStudent, saveData, saveTopic, deleteTopic, saveTopicsBulk, saveAttendance, saveDailyNote, saveHabitCompletionBulk, saveHabitList, deleteHabit }) => {
             // Specialized sync logic...
             
             // 1. Sync students
@@ -520,24 +520,31 @@ const App: React.FC = () => {
             saveData(currentUser.uid!, newData);
 
             // 5. Sync Topics (DPSS and Self-Learning)
+            const topicsToSave: { topic: any; category: 'dpss' | 'selfLearning' }[] = [];
+            const topicIdsToDelete: { id: string; category: 'dpss' | 'selfLearning' }[] = [];
+
             ['dpssTopics', 'selfLearningTopics'].forEach(field => {
               const category = (field === 'dpssTopics' ? 'dpss' : 'selfLearning') as 'dpss' | 'selfLearning';
               const oldTopicsArr = (prev[field as keyof AppData] as any[]) || [];
               const newTopicsArr = (newData[field as keyof AppData] as any[]) || [];
               
-              const oldMap = new Map(oldTopicsArr.map(t => [t.id, t]));
+              const oldMap = new Map(oldTopicsArr.map(t => [String(t.id), t]));
               newTopicsArr.forEach(t => {
-                const old = oldMap.get(t.id);
+                const old = oldMap.get(String(t.id));
                 if (!old || JSON.stringify(old) !== JSON.stringify(t)) {
-                  saveTopic(currentUser.uid!, t, category);
+                  topicsToSave.push({ topic: t, category });
                 }
               });
               oldTopicsArr.forEach(t => {
-                if (!newTopicsArr.find(nt => nt.id === t.id)) {
-                  deleteTopic(currentUser.uid!, t.id, category);
+                if (!newTopicsArr.find(nt => String(nt.id) === String(t.id))) {
+                  topicIdsToDelete.push({ id: String(t.id), category });
                 }
               });
             });
+
+            if (topicsToSave.length > 0 || topicIdsToDelete.length > 0) {
+              saveTopicsBulk(currentUser.uid!, topicsToSave, topicIdsToDelete);
+            }
           });
         }
         
