@@ -79,7 +79,7 @@ export const compressObject = async (obj: any): Promise<{ compressed: string; is
 
     const base64Str = await Promise.race([
       compressionWorker(),
-      timeout(5000)
+      timeout(15000)
     ]);
 
     if (base64Str && base64Str.length < jsonStr.length) {

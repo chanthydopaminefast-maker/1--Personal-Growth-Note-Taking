@@ -120,6 +120,7 @@ export interface DPSSTopic {
   alignment: 'left' | 'center' | 'right';
   deletedAt?: string; // Soft delete support
   children?: DPSSTopic[];
+  order?: number;
   attachments?: { id: string; name: string; url: string; type: string }[];
   isArchived?: boolean;
   isLocked?: boolean;

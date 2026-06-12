@@ -518,6 +518,26 @@ const App: React.FC = () => {
 
             // 4. Generic sync for settings
             saveData(currentUser.uid!, newData);
+
+            // 5. Sync Topics (DPSS and Self-Learning)
+            ['dpssTopics', 'selfLearningTopics'].forEach(field => {
+              const category = (field === 'dpssTopics' ? 'dpss' : 'selfLearning') as 'dpss' | 'selfLearning';
+              const oldTopicsArr = (prev[field as keyof AppData] as any[]) || [];
+              const newTopicsArr = (newData[field as keyof AppData] as any[]) || [];
+              
+              const oldMap = new Map(oldTopicsArr.map(t => [t.id, t]));
+              newTopicsArr.forEach(t => {
+                const old = oldMap.get(t.id);
+                if (!old || JSON.stringify(old) !== JSON.stringify(t)) {
+                  saveTopic(currentUser.uid!, t, category);
+                }
+              });
+              oldTopicsArr.forEach(t => {
+                if (!newTopicsArr.find(nt => nt.id === t.id)) {
+                  deleteTopic(currentUser.uid!, t.id, category);
+                }
+              });
+            });
           });
         }
         

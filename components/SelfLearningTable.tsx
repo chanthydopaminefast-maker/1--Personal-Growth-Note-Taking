@@ -2919,6 +2919,122 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
     return colors[hash % colors.length];
   };
 
+  const handleMoveTopicUpDown = (id: string, direction: 'up' | 'down') => {
+    const parentId = getParentId(data.selfLearningTopics || [], id);
+    const siblings = parentId ? (findRootTopic(data.selfLearningTopics || [], parentId)?.children || []) : (data.selfLearningTopics || []);
+    
+    if (siblings.length <= 1) return;
+    
+    const index = siblings.findIndex(s => s.id === id);
+    if (index === -1) return;
+    if (direction === 'up' && index === 0) return;
+    if (direction === 'down' && index === siblings.length - 1) return;
+    
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    const newSiblings = [...siblings];
+    const [moved] = newSiblings.splice(index, 1);
+    newSiblings.splice(targetIndex, 0, moved);
+    
+    const updateSiblings = (items: DPSSTopic[]): DPSSTopic[] => {
+      if (!parentId) return newSiblings;
+      return items.map(item => {
+        if (item.id === parentId) return { ...item, children: newSiblings };
+        if (item.children) return { ...item, children: updateSiblings(item.children) };
+        return item;
+      });
+    };
+    
+    const updated = updateSiblings(data.selfLearningTopics || []);
+    if (onUpdateTopic) {
+      const root = findRootTopic(updated, id);
+      onUpdateTopic(updated, root || undefined);
+    } else {
+      onUpdate({ ...data, selfLearningTopics: updated });
+    }
+  };
+
+  const [draggedTopicId, setDraggedTopicId] = useState<string | null>(null);
+
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    setDraggedTopicId(id);
+    e.dataTransfer.setData('text/plain', id);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent, targetId: string) => {
+    if (draggedTopicId === targetId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = (e: React.DragEvent, targetParentId: string | null) => {
+    e.preventDefault();
+    const sourceId = e.dataTransfer.getData('text/plain') || draggedTopicId;
+    if (!sourceId || sourceId === targetParentId) return;
+
+    // Recursive search to ensure we're not dropping a parent into its own child
+    const isChildOf = (parentId: string, targetId: string): boolean => {
+      const topic = findSpecificTopic(data.selfLearningTopics || [], parentId);
+      if (!topic || !topic.children) return false;
+      return topic.children.some(c => c.id === targetId || isChildOf(c.id, targetId));
+    };
+
+    if (targetParentId && isChildOf(sourceId, targetParentId)) {
+      alert("Cannot move a folder into its own sub-folder!");
+      return;
+    }
+
+    const findSpecificTopic = (items: DPSSTopic[], searchId: string): DPSSTopic | null => {
+      for (const item of items) {
+        if (item.id === searchId) return item;
+        if (item.children) {
+          const found = findSpecificTopic(item.children, searchId);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    const topicToMove = findSpecificTopic(data.selfLearningTopics || [], sourceId);
+    if (!topicToMove) return;
+
+    // 1. Remove from old position
+    const removeTopic = (items: DPSSTopic[]): DPSSTopic[] => {
+      return items.filter(item => item.id !== sourceId).map(item => ({
+        ...item,
+        children: item.children ? removeTopic(item.children) : undefined
+      }));
+    };
+
+    let updated = removeTopic(data.selfLearningTopics || []);
+
+    // 2. Add to new position
+    const addTopicToTarget = (items: DPSSTopic[]): DPSSTopic[] => {
+      if (targetParentId === null) {
+        return [...items, topicToMove];
+      }
+      return items.map(item => {
+        if (item.id === targetParentId) {
+          return { ...item, children: [...(item.children || []), topicToMove] };
+        }
+        if (item.children) {
+          return { ...item, children: addTopicToTarget(item.children) };
+        }
+        return item;
+      });
+    };
+
+    updated = addTopicToTarget(updated);
+
+    if (onUpdateTopic) {
+      const root = findRootTopic(updated, sourceId);
+      onUpdateTopic(updated, root || undefined);
+    } else {
+      onUpdate({ ...data, selfLearningTopics: updated });
+    }
+    setDraggedTopicId(null);
+  };
+
   const handleShareTopic = (topic: any) => {
     setSharingTopic(topic);
     setGeneratedShareLink(null);
@@ -3035,7 +3151,15 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
     const isExpanded = !!expandedTopics[topic.id];
 
     return (
-      <div key={topic.id} className="select-none" style={{ marginLeft: `${depth * 8}px` }}>
+      <div 
+        key={topic.id} 
+        className={`select-none transition-all duration-200 ${draggedTopicId === topic.id ? 'opacity-30' : 'opacity-100'}`} 
+        style={{ marginLeft: `${depth * 8}px` }}
+        draggable={!topic.isLocked}
+        onDragStart={(e) => handleDragStart(e, topic.id)}
+        onDragOver={(e) => handleDragOver(e, topic.id)}
+        onDrop={(e) => handleDrop(e, topic.id)}
+      >
         <div 
           onClick={() => {
             setSelectedTopicId(topic.id);
@@ -3120,6 +3244,23 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
                   <div className="absolute right-0 top-full mt-2 bg-white dark:bg-slate-800 shadow-xl rounded-xl border border-slate-200 dark:border-slate-700 py-1.5 flex flex-col min-w-[160px] z-[100]"
                        onClick={e => e.stopPropagation()}
                   >
+                    <div className="flex px-2 pb-1 gap-1 border-b border-slate-100 dark:border-slate-700 mb-1">
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleMoveTopicUpDown(topic.id, 'up'); setOpenMenuId(null); }}
+                        className="flex-1 py-1 flex items-center justify-center bg-slate-50 dark:bg-slate-900 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400"
+                        title="Move Up"
+                      >
+                        <ArrowUp size={14} />
+                      </button>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleMoveTopicUpDown(topic.id, 'down'); setOpenMenuId(null); }}
+                        className="flex-1 py-1 flex items-center justify-center bg-slate-50 dark:bg-slate-900 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400"
+                        title="Move Down"
+                      >
+                        <ArrowDown size={14} />
+                      </button>
+                    </div>
+
                     <button 
                       onClick={(e) => { e.stopPropagation(); addTopic(topic.id); setOpenMenuId(null); }} 
                       className="w-full text-left flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors text-xs"
@@ -3510,7 +3651,11 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
           </div>
 
           {/* Active Topics */}
-          <div className="space-y-1">
+          <div 
+            className="space-y-1 min-h-[50px] outline-none"
+            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+            onDrop={(e) => handleDrop(e, null)}
+          >
             {filteredTopics.length > 0 ? (
               filteredTopics.map(t => renderTopic(t))
             ) : (
