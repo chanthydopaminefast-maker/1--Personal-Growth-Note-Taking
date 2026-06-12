@@ -3,8 +3,6 @@ import { Plus, Trash2, Calendar, AlignLeft, AlignCenter, AlignRight, Highlighter
 import { AppData, DPSSTopic } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { callNeuralEngine } from '../services/neuralEngine';
-import { compressImage } from '../services/imageUtils';
-import { copyToClipboard, encodeToURLSafeBase64 } from '../services/sharingEncoder';
 import { PAPER_STYLES } from '../src/styles/paperStyles';
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
@@ -68,14 +66,6 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
   const [isArchiveFolderOpen, setIsArchiveFolderOpen] = useState(false);
   const [editingTopicId, setEditingTopicId] = useState<string | null>(null);
   const [editingTopicTitle, setEditingTopicTitle] = useState<string>('');
-  
-  const [mainEditorTitle, setMainEditorTitle] = useState<string>('');
-  useEffect(() => {
-     if (selectedTopicId) {
-        const found = findTopic(data.dpssTopics || [], selectedTopicId);
-        if (found) setMainEditorTitle(found.title);
-     }
-  }, [selectedTopicId]);
   const [activeTableCell, setActiveTableCell] = useState<HTMLTableCellElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isResizing = useRef(false);
@@ -1441,14 +1431,6 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       });
     };
     const updated = updateTopics(data.dpssTopics || []);
-    
-    // Automatically select the newly created topic so the user can start using or typing immediately
-    setSelectedTopicId(newTopic.id);
-    
-    // Automatically enter rename/edit mode on the title so they can rename it right away
-    setEditingTopicId(newTopic.id);
-    setEditingTopicTitle('New Topic');
-
     if (onUpdateTopic) {
       if (!parentId) {
         onUpdateTopic(updated, newTopic);
@@ -1594,6 +1576,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
   };
 
   const handleShareTopic = async (topic: any) => {
+    setSharingTopicId(topic.id);
     const storedUser = localStorage.getItem('dps_user');
     let userName = 'Chanthy';
     let userId = 'unknown';
@@ -1605,25 +1588,26 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
       } catch(e){}
     }
 
-    setSharingTopicId(topic.id);
-    setGeneratedShareLink('PENDING');
+    try {
+      const { createSharedNote } = await import('../services/firebase');
+      
+      const timeoutPromise = new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error('timeout')), 5000)
+      );
 
-    import('../services/firebase')
-      .then(({ createSharedNote }) => {
-        return createSharedNote(userId, userName, 'note-taking', topic.title, topic);
-      })
-      .then((shareId) => {
-        const cloudLink = window.location.origin + window.location.pathname + '?share=' + shareId;
-        setGeneratedShareLink(cloudLink);
-      })
-      .catch((error: any) => {
-        console.error("Sharing failed:", error);
-        alert(`Failed to create clean shared link: ${error.message || error}`);
-        setGeneratedShareLink(null);
-      })
-      .finally(() => {
-        setSharingTopicId(null);
-      });
+      const shareId = await Promise.race([
+        createSharedNote(userId, userName, 'note-taking', topic.title, topic),
+        timeoutPromise
+      ]);
+      
+      const link = window.location.origin + window.location.pathname + '?share=' + shareId;
+      setGeneratedShareLink(link);
+    } catch (error: any) {
+      console.error("Firestore sharing failed:", error);
+      alert("Failed to create shareable link. Please ensure your database is connected and available.");
+    } finally {
+      setSharingTopicId(null);
+    }
   };
 
   const moveTopicToSelfLearning = async (topicToMove: DPSSTopic) => {
@@ -1694,86 +1678,49 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     });
   };
 
-  const handlePaste = async (e: React.ClipboardEvent<HTMLDivElement>) => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-
-    for (let i = 0; i < items.length; i++) {
-        if (items[i].type.indexOf('image') !== -1) {
-            const file = items[i].getAsFile();
-            if (file) {
-                e.preventDefault(); // Stop default massive base64 injection
-                try {
-                    const dataUrl = await compressImage(file, 800, 0.7);
-                    const html = `<div style="margin: 15px 0; text-align: center;"><img src="${dataUrl}" alt="pasted image" style="max-width: 100%; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);" /></div><p><br></p>`;
-                    document.execCommand('insertHTML', false, html);
-                } catch (err) {
-                    console.error("Paste compression error:", err);
-                }
-                break;
-            }
-        }
-    }
-  };
-
   const selectedTopic = selectedTopicId ? findTopic(topics, selectedTopicId) : null;
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0 || !selectedTopic) return;
 
     const file = files[0];
-    let dataUrl = '';
-    
-    try {
-      if (file.type.startsWith('image/')) {
-        dataUrl = await compressImage(file, 800, 0.7);
-      } else {
-        // Read as data URL for non-images (which might fail if too large)
-        dataUrl = await new Promise<string>((resolve, reject) => {
-           const reader = new FileReader();
-           reader.onload = (event) => resolve(event.target?.result as string);
-           reader.onerror = reject;
-           reader.readAsDataURL(file);
-        });
-      }
-    } catch (e) {
-      console.error(e);
-      alert('Failed to process file.');
-      return;
-    }
-
-    let html = '';
-    try {
-      if (file.type.startsWith('image/')) {
-          html = `<div style="margin: 15px 0; text-align: center;"><img src="${dataUrl}" alt="uploaded image" style="max-width: 100%; max-height: 400px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);" /></div><p><br></p>`;
-      } else if (file.type.startsWith('video/')) {
-          html = `<div contenteditable="false" style="margin: 15px 0; text-align: center;"><video controls src="${dataUrl}" style="max-width: 100%; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);"></video></div><p><br></p>`;
-      } else if (file.type.startsWith('audio/')) {
-          html = `<div contenteditable="false" style="margin: 15px 0; text-align: center; background: rgba(255,255,255,0.4); padding: 15px; border-radius: 50px;"><audio controls src="${dataUrl}" style="width: 100%; outline: none;"></audio></div><p><br></p>`;
-      } else {
-          html = `<div contenteditable="false" style="margin: 15px 0; padding: 12px 16px; background: rgba(255, 237, 213, 0.8); border: 1px solid rgba(0,0,0,0.1); border-radius: 8px; display: inline-block;">
-              <a href="${dataUrl}" download="${file.name}" target="_blank" rel="noopener noreferrer" style="color: #f97316; font-weight: bold; text-decoration: none;">📎 Open/Download: ${file.name}</a>
-          </div><p><br></p>`;
-      }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      let html = '';
       
-      if (editorRef.current) {
-        editorRef.current.focus();
-        if (savedRange.current) {
-          const selection = window.getSelection();
-          selection?.removeAllRanges();
-          selection?.addRange(savedRange.current);
+      try {
+        if (file.type.startsWith('image/')) {
+            html = `<div style="margin: 15px 0; text-align: center;"><img src="${dataUrl}" alt="uploaded image" style="max-width: 100%; max-height: 400px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);" /></div><p><br></p>`;
+        } else if (file.type.startsWith('video/')) {
+            html = `<div contenteditable="false" style="margin: 15px 0; text-align: center;"><video controls src="${dataUrl}" style="max-width: 100%; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);"></video></div><p><br></p>`;
+        } else if (file.type.startsWith('audio/')) {
+            html = `<div contenteditable="false" style="margin: 15px 0; text-align: center; background: rgba(255,255,255,0.4); padding: 15px; border-radius: 50px;"><audio controls src="${dataUrl}" style="width: 100%; outline: none;"></audio></div><p><br></p>`;
+        } else {
+            // General file link (PDF, MS Word)
+            html = `<div contenteditable="false" style="margin: 15px 0; padding: 12px 16px; background: rgba(255, 237, 213, 0.8); border: 1px solid rgba(0,0,0,0.1); border-radius: 8px; display: inline-block;">
+                <a href="${dataUrl}" download="${file.name}" target="_blank" rel="noopener noreferrer" style="color: #f97316; font-weight: bold; text-decoration: none;">📎 Open/Download: ${file.name}</a>
+            </div><p><br></p>`;
         }
+        if (editorRef.current) {
+          editorRef.current.focus();
+          if (savedRange.current) {
+            const selection = window.getSelection();
+            selection?.removeAllRanges();
+            selection?.addRange(savedRange.current);
+          }
+        }
+        document.execCommand('insertHTML', false, html);
+        if (editorRef.current) {
+           updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
+        }
+      } catch (err) {
+        console.error("Storage error:", err);
+        alert("File may be too large to save in local storage. Consider using Firebase.");
       }
-      document.execCommand('insertHTML', false, html);
-      if (editorRef.current) {
-         updateTopic(selectedTopic.id, { content: editorRef.current.innerHTML });
-      }
-    } catch (err) {
-      console.error("Storage error:", err);
-      alert("File may be too large to save in local storage. Consider using Firebase.");
-    }
-    
+    };
+    reader.readAsDataURL(file);
     e.target.value = ''; // reset
   };
 
@@ -2653,19 +2600,6 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     return colors[hash % colors.length];
   };
 
-  const getTopicSizeKB = (node: DPSSTopic): number => {
-    const countChars = (item: DPSSTopic): number => {
-      let chars = (item.content || '').length + (item.title || '').length;
-      if (item.children) {
-        for (const child of item.children) {
-          chars += countChars(child);
-        }
-      }
-      return chars;
-    };
-    return Math.round(countChars(node) / 1024);
-  };
-
   const renderTopic = (topic: DPSSTopic, depth = 0): React.ReactNode => {
     const isSelected = selectedTopicId === topic.id;
     const style = getTopicStyles(topic.id, isSelected);
@@ -2743,10 +2677,7 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
             )}
           </div>
 
-          <div className="flex gap-[6px] shrink-0 items-center">
-            <span className="text-[9px] font-black text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-950 px-1.5 py-0.5 rounded-lg border border-slate-200/50 dark:border-slate-800 scale-90 shrink-0 select-none" title="Size of this folder/file including subtopics">
-               {getTopicSizeKB(topic)} KB
-            </span>
+          <div className="flex gap-1 shrink-0">
             {isSelected && (
               <div className="relative shrink-0">
                 <button 
@@ -3017,29 +2948,18 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                 <div className="flex items-center gap-2 md:gap-4 px-2 mt-14 md:mt-0">
                   {!isSidebarOpen && <div className="w-12 md:hidden shrink-0" />} {/* Spacer for the absolute menu button */}
                   <input 
-                      value={mainEditorTitle} 
-                      onChange={(e) => setMainEditorTitle(e.target.value)}
-                      onBlur={() => {
-                        if (selectedTopic.title !== mainEditorTitle) {
-                           updateTopic(selectedTopic.id, { title: mainEditorTitle });
-                        }
-                      }}
-                      onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+                      value={selectedTopic.title} 
+                      onChange={(e) => updateTopic(selectedTopic.id, { title: e.target.value })}
                       className="flex-1 text-2xl md:text-4xl font-black text-slate-100 bg-transparent outline-none p-2 border-b-2 border-orange-500/20 focus:border-orange-500 transition-all min-w-0"
                       placeholder="Topic Title..."
                   />
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-slate-400 bg-white/20 px-2 py-1 rounded-lg">
-                       {(new Blob([JSON.stringify(selectedTopic)]).size / 1024).toFixed(0)} KB
-                    </span>
-                    <button
-                      onClick={() => setIsToolbarHidden(!isToolbarHidden)}
-                      className={`p-2 shrink-0 ${isToolbarHidden ? 'bg-orange-100 text-orange-600 hover:bg-orange-200' : 'bg-white/50 text-slate-500 hover:bg-white'} rounded-xl transition-all shadow-sm`}
-                      title={isToolbarHidden ? "Show Toolbar" : "Full Screen (Hide Toolbar)"}
-                    >
-                      {isToolbarHidden ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => setIsToolbarHidden(!isToolbarHidden)}
+                    className={`p-2 shrink-0 ${isToolbarHidden ? 'bg-orange-100 text-orange-600 hover:bg-orange-200' : 'bg-white/50 text-slate-500 hover:bg-white'} rounded-xl transition-all shadow-sm`}
+                    title={isToolbarHidden ? "Show Toolbar" : "Full Screen (Hide Toolbar)"}
+                  >
+                    {isToolbarHidden ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+                  </button>
                 </div>
                 
                 {!isToolbarHidden && (
@@ -4011,7 +3931,6 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                     onMouseUp={handleSelection}
                     onKeyUp={handleSelection}
                     onKeyDown={handleEditorKeyDown}
-                    onPaste={handlePaste}
                     onMouseMove={handleEditorMouseMove}
                     onMouseDown={handleEditorMouseDown}
                     onTouchStart={handleEditorTouchStart}
@@ -4202,45 +4121,21 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
             <p className="text-xs text-slate-500">
                Anyone with this link can view and import exactly this study topic folder structure (including all nesting notes) to their portal!
             </p>
-
-            <div className="flex items-center justify-between text-[9px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-950/40 px-3 py-1.5 rounded-xl border border-slate-100 dark:border-slate-800/40">
-              <span>Link Status</span>
-              <span>
-                {generatedShareLink !== 'PENDING' && generatedShareLink.includes('?share=') ? (
-                  <span className="text-emerald-500 font-black flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span> Cloud Sync Active
-                  </span>
-                ) : (
-                  <span className="text-orange-500 font-black flex items-center gap-1.5">
-                    <Loader2 size={10} className="animate-spin inline-block text-orange-500" /> Building Cloud Link...
-                  </span>
-                )}
-              </span>
-            </div>
             
             <div className="flex items-center bg-slate-50 dark:bg-slate-950 p-3 rounded-2xl border border-slate-200/60 dark:border-slate-800">
               <input 
                 type="text" 
                 readOnly 
-                value={generatedShareLink === 'PENDING' ? 'Generating clean secure link...' : generatedShareLink} 
-                onClick={(e) => generatedShareLink !== 'PENDING' && (e.target as HTMLInputElement).select()}
-                className="flex-1 bg-transparent text-xs text-slate-700 dark:text-slate-300 outline-none select-all truncate pr-2 font-mono cursor-pointer disabled:opacity-50"
-                disabled={generatedShareLink === 'PENDING'}
-                title={generatedShareLink === 'PENDING' ? "Generating link..." : "Click to select all text"}
+                value={generatedShareLink} 
+                className="flex-1 bg-transparent text-xs text-slate-705 dark:text-slate-300 outline-none select-all truncate pr-2 font-mono"
               />
               <button 
-                onClick={async () => {
-                  if (generatedShareLink === 'PENDING') return;
-                  const success = await copyToClipboard(generatedShareLink);
-                  if (success) {
-                    setIsCopied(true);
-                    setTimeout(() => setIsCopied(false), 2000);
-                  } else {
-                    alert("Unable to copy automatically. Please copy the link manually from the input field.");
-                  }
+                onClick={() => {
+                  navigator.clipboard.writeText(generatedShareLink);
+                  setIsCopied(true);
+                  setTimeout(() => setIsCopied(false), 2000);
                 }}
-                disabled={generatedShareLink === 'PENDING'}
-                className="h-8 px-4 bg-orange-500 hover:bg-orange-600 active:scale-95 text-white text-[10px] uppercase font-black tracking-widest rounded-xl transition-all disabled:opacity-40 disabled:scale-100"
+                className="h-8 px-4 bg-orange-500 hover:bg-orange-600 active:scale-95 text-white text-[10px] uppercase font-black tracking-widest rounded-xl transition-all"
               >
                 {isCopied ? 'Copied!' : 'Copy'}
               </button>
@@ -4249,6 +4144,10 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
             <div className="flex justify-between items-center pt-2">
               <button 
                 onClick={() => {
+                  const searchParams = new URL(generatedShareLink).searchParams;
+                  const shareId = searchParams.get('share');
+                  if (!shareId) return;
+                  
                   const findNode = (nodes: any[], id: string): any => {
                      for (let node of nodes) {
                         if (node.id === id) return node;

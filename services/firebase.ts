@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { 
   getFirestore,
+  enableIndexedDbPersistence,
   doc, 
   onSnapshot, 
   setDoc, 
@@ -8,10 +9,7 @@ import {
   getDocFromServer, 
   collection, 
   writeBatch,
-  getDoc,
-  query,
-  where,
-  getDocs
+  getDoc
 } from 'firebase/firestore';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, setPersistence, browserLocalPersistence } from 'firebase/auth'; 
 import { AppData, BackupEntry, Student } from '../types';
@@ -24,54 +22,14 @@ const app = initializeApp(firebaseConfig);
 // Initialize Firestore
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
-const flattenTopicTree = (node: any, parentId: string | null = null, rootId: string = node.id): any[] => {
-  let flatList: any[] = [];
-  const children = node.children || [];
-  const flatNode = { ...node, parentId, rootId };
-  flatNode.childIds = children.map((c: any) => c.id);
-  delete flatNode.children;
-  flatList.push(flatNode);
-  for (const child of children) {
-    flatList = flatList.concat(flattenTopicTree(child, node.id, rootId));
+// Enable offline persistence so data isn't lost during connection blips or reloads
+enableIndexedDbPersistence(db).catch((err) => {
+  if (err.code == 'failed-precondition') {
+    console.warn('Multiple tabs open, persistence can only be enabled in one tab at a a time.');
+  } else if (err.code == 'unimplemented') {
+    console.warn('The current browser does not support all of the features required to enable persistence');
   }
-  return flatList;
-};
-
-const reconstructTopics = (docs: any[]) => {
-  const nodeMap = new Map();
-  const roots: any[] = [];
-
-  docs.forEach(d => {
-    nodeMap.set(d.id, { ...d, children: Array.isArray(d.children) ? [...d.children] : [] });
-  });
-  
-  docs.forEach(d => {
-    const node = nodeMap.get(d.id);
-    if (d.parentId && nodeMap.has(d.parentId)) {
-       const parent = nodeMap.get(d.parentId);
-       const existingIdx = parent.children.findIndex((c: any) => c.id === node.id);
-       if (existingIdx !== -1) {
-          parent.children[existingIdx] = node;
-       } else {
-          parent.children.push(node);
-       }
-    } else {
-       // Root node for this subset if parent is not in nodeMap
-       roots.push(node);
-    }
-  });
-
-  for (const node of nodeMap.values()) {
-     if (node.childIds && node.childIds.length > 0) {
-        node.children = node.children.filter((c: any) => node.childIds.includes(c.id));
-        node.children.sort((a: any, b: any) => node.childIds.indexOf(a.id) - node.childIds.indexOf(b.id));
-     }
-  }
-  
-  return roots;
-};
-
-// Using real-time memory-only syncing for maximum speed and cross-device safety
+});
 
 export const auth = getAuth(app);
 // Explicitly set persistence to LOCAL to ensure sessions survive reloads/redeploys
@@ -126,7 +84,9 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
     operationType,
     path
   };
-  console.warn('Firestore Error occurred: ', JSON.stringify(errInfo));
+  console.warn('Firestore Error (Soft Logged for Vercel/Offline Resilience): ', JSON.stringify(errInfo));
+  isOffline = true;
+  // Graceful no-crash fallback for unauthorized error or offline behavior
 }
 
 const DOC_PATH = 'portal/data';
@@ -151,6 +111,18 @@ export const logOut = async () => {
     console.error("Sign-out Error:", error);
   }
 };
+
+async function testConnection() {
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+  } catch (error) {
+    if(error instanceof Error && error.message.includes('the client is offline')) {
+      console.error("Please check your Firebase configuration.");
+      isOffline = true;
+    }
+  }
+}
+testConnection();
 
 // Global cache to prevent race conditions between local writes and remote snapshots
 const activeSubscriptions = new Map<string, {
@@ -345,8 +317,7 @@ export const subscribeToData = (
   const unsubTopics = onSnapshot(topicsRef, (querySnap) => {
     const sub = activeSubscriptions.get(userId);
     if (sub) {
-      const rawDocs = querySnap.docs.map(d => d.data() as any);
-      sub.currentData.dpssTopics = reconstructTopics(rawDocs);
+      sub.currentData.dpssTopics = querySnap.docs.map(d => d.data() as any);
       notifyChange();
     }
   }, (err) => handleFirestoreError(err, OperationType.GET, topicsRef.path));
@@ -387,8 +358,7 @@ export const subscribeToData = (
   const unsubSl = onSnapshot(slRef, (querySnap) => {
     const sub = activeSubscriptions.get(userId);
     if (sub) {
-      const rawDocs = querySnap.docs.map(d => d.data() as any);
-      sub.currentData.selfLearningTopics = reconstructTopics(rawDocs);
+      sub.currentData.selfLearningTopics = querySnap.docs.map(d => d.data() as any);
       notifyChange();
     }
   }, (err) => handleFirestoreError(err, OperationType.GET, slRef.path));
@@ -559,8 +529,6 @@ export const saveJournalEntry = async (userId: string, date: string, entry: any)
   }
 };
 
-const saveTimeouts = new Map<string, NodeJS.Timeout>();
-
 export const saveTopic = async (userId: string, topic: any, category: 'dpss' | 'selfLearning' = 'dpss') => {
   if (!userId || !topic || !topic.id) return;
   
@@ -574,74 +542,14 @@ export const saveTopic = async (userId: string, topic: any, category: 'dpss' | '
     updateLocalCache(userId, { [field]: topics });
   }
 
-  const topicKey = `${category}_${topic.id}`;
-  if (saveTimeouts.has(topicKey)) {
-    clearTimeout(saveTimeouts.get(topicKey)!);
+  try {
+    const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
+    const docRef = doc(db, 'users', userId, coll, topic.id);
+    await setDoc(docRef, topic, { merge: true });
+  } catch (error) {
+    const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
+    handleFirestoreError(error, OperationType.WRITE, `users/${userId}/${coll}/${topic.id}`);
   }
-
-  saveTimeouts.set(topicKey, setTimeout(async () => {
-    try {
-      const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
-      const flatNodes = flattenTopicTree(topic);
-      const newFlatNodeIds = new Set(flatNodes.map(n => n.id));
-      
-      // Query Firestore for any existing flat node documents with this rootId
-      const collRef = collection(db, 'users', userId, coll);
-      const q = query(collRef, where('rootId', '==', topic.id));
-      const querySnap = await getDocs(q);
-      const existingIdsInFirestore = querySnap.docs.map(doc => doc.id);
-      
-      const batches = [];
-      let currentBatch = writeBatch(db);
-      let operationCount = 0;
-      
-      // 1. Delete documents for any nodes that were removed from the tree in frontend
-      for (const existingId of existingIdsInFirestore) {
-        if (!newFlatNodeIds.has(existingId)) {
-          if (operationCount >= 490) {
-            batches.push(currentBatch.commit());
-            currentBatch = writeBatch(db);
-            operationCount = 0;
-          }
-          currentBatch.delete(doc(db, 'users', userId, coll, existingId));
-          operationCount++;
-        }
-      }
-      
-      // 2. Save up-to-date active nodes
-      for (const node of flatNodes) {
-        const sanitizedNode = sanitizeForFirestore(node);
-        const sizeBytes = new Blob([JSON.stringify(sanitizedNode)]).size;
-        if (sizeBytes > 950000) {
-          console.error(`Document ${node.id} is too large (${sizeBytes} bytes).`);
-          window.dispatchEvent(new CustomEvent('PAYLOAD_TOO_LARGE', { detail: { id: topic.id, title: topic.title || 'Topic' } }));
-          return; // Skip saving to Firestore to prevent crashing connection
-        }
-        
-        if (operationCount >= 490) {
-          batches.push(currentBatch.commit());
-          currentBatch = writeBatch(db);
-          operationCount = 0;
-        }
-        
-        const docRef = doc(db, 'users', userId, coll, node.id);
-        currentBatch.set(docRef, sanitizedNode, { merge: true });
-        operationCount++;
-      }
-      
-      if (operationCount > 0) {
-        batches.push(currentBatch.commit());
-      }
-      
-      await Promise.all(batches);
-      
-    } catch (error) {
-      const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
-      handleFirestoreError(error, OperationType.WRITE, `users/${userId}/${coll}/${topic.id}`);
-    } finally {
-      saveTimeouts.delete(topicKey);
-    }
-  }, 800));
 };
 
 export const deleteTopic = async (userId: string, topicId: string, category: 'dpss' | 'selfLearning' = 'dpss') => {
@@ -651,44 +559,13 @@ export const deleteTopic = async (userId: string, topicId: string, category: 'dp
   const sub = activeSubscriptions.get(userId);
   if (sub) {
     const field = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
-    const topics = sub.currentData[field] || [];
-    updateLocalCache(userId, { [field]: topics.filter((t: any) => t.id !== topicId) });
+    updateLocalCache(userId, { [field]: (sub.currentData[field] || []).filter((t: any) => t.id !== topicId) });
   }
 
   try {
     const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
-    const collRef = collection(db, 'users', userId, coll);
-    
-    // Query all existing nodes for this rootId to guarantee absolute deletion of descendants
-    const q = query(collRef, where('rootId', '==', topicId));
-    const querySnap = await getDocs(q);
-    
-    const batches = [];
-    let currentBatch = writeBatch(db);
-    let operationCount = 0;
-    
-    // Delete root doc
-    currentBatch.delete(doc(db, 'users', userId, coll, topicId));
-    operationCount++;
-    
-    // Delete descendants found in Firestore
-    querySnap.docs.forEach(d => {
-      if (d.id !== topicId) {
-        if (operationCount >= 490) {
-          batches.push(currentBatch.commit());
-          currentBatch = writeBatch(db);
-          operationCount = 0;
-        }
-        currentBatch.delete(doc(db, 'users', userId, coll, d.id));
-        operationCount++;
-      }
-    });
-    
-    if (operationCount > 0) {
-      batches.push(currentBatch.commit());
-    }
-    
-    await Promise.all(batches);
+    const docRef = doc(db, 'users', userId, coll, topicId);
+    await deleteDoc(docRef);
   } catch (error) {
     const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
     handleFirestoreError(error, OperationType.DELETE, `users/${userId}/${coll}/${topicId}`);
@@ -807,39 +684,6 @@ export const getCloudBackups = async (): Promise<Partial<BackupEntry>[]> => {
 export const getSyncStatus = () => !isOffline;
 
 // Global Shared note helper functions
-const stripMassiveImages = (obj: any): any => {
-  if (obj === null || obj === undefined) return obj;
-  if (typeof obj === 'string') {
-    // If it's a massive base64 string or data URL (stripping everything above 1000 characters)
-    if (obj.startsWith('data:image/') && obj.length > 1000) {
-      return 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100%" height="100%" fill="%23f1f5f9"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="8" fill="%2364748b">[Image Removed]</text></svg>';
-    }
-    // Also check for embedded markdown or HTML img tags with huge base64 src
-    if (obj.includes('data:image/')) {
-      return obj.replace(/data:image\/[^;]+;base64,[^"\s>)]+/g, (match) => {
-        if (match.length > 1000) {
-          return 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100%" height="100%" fill="%23f1f5f9"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="8" fill="%2364748b">[Image Removed]</text></svg>';
-        }
-        return match;
-      });
-    }
-    return obj;
-  }
-  if (Array.isArray(obj)) {
-    return obj.map(stripMassiveImages);
-  }
-  if (typeof obj === 'object') {
-    const result: any = {};
-    for (const key in obj) {
-      if (Object.prototype.hasOwnProperty.call(obj, key)) {
-        result[key] = stripMassiveImages(obj[key]);
-      }
-    }
-    return result;
-  }
-  return obj;
-};
-
 const sanitizeForFirestore = (obj: any): any => {
   if (obj === undefined) return null;
   if (obj === null || typeof obj !== 'object') return obj;
@@ -865,27 +709,26 @@ export const createSharedNote = async (
   title: string,
   payload: any
 ): Promise<string> => {
-  const response = await fetch('/api/share/create', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ userId, ownerName, type, title, payload }),
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || 'Failed to create shareable link on server');
-  }
-
-  const result = await response.json();
-  return result.shareId;
+  const shareId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  const shareRef = doc(db, 'sharedNotes', shareId);
+  const safeData = {
+    id: String(shareId),
+    ownerId: String(userId || 'unknown').substring(0, 120),
+    ownerName: String(ownerName || 'Chanthy').substring(0, 120),
+    type: String(type || 'self-learning').substring(0, 45),
+    title: String(title || 'Untitled').substring(0, 250),
+    payload: sanitizeForFirestore(payload || {}),
+    createdAt: new Date().toISOString()
+  };
+  await setDoc(shareRef, safeData);
+  return shareId;
 };
 
 export const getSharedNote = async (shareId: string): Promise<any> => {
-  const response = await fetch(`/api/share/get/${shareId}`);
-  if (!response.ok) {
-    return null;
+  const shareRef = doc(db, 'sharedNotes', shareId);
+  const docSnap = await getDoc(shareRef);
+  if (docSnap.exists()) {
+    return docSnap.data();
   }
-  return response.json();
+  return null;
 };

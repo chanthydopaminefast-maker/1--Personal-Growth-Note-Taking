@@ -6,7 +6,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { PAPER_STYLES } from '../src/styles/paperStyles';
 import { RichTextDiv } from './FloatingToolbar';
 import { DictationButton } from './DictationButton';
-import { copyToClipboard, encodeToURLSafeBase64 } from '../services/sharingEncoder';
 
 interface DailyJournalProps {
   data: AppData;
@@ -54,44 +53,36 @@ const JournalBlock: React.FC<JournalBlockProps> = ({ title, icon, children, bgCo
   const [isCopied, setIsCopied] = useState(false);
 
   const handleShareJournal = async () => {
-    const storedUser = localStorage.getItem('dps_user');
-    let userName = 'Chanthy';
-    let userId = 'unknown';
-    if (storedUser) {
-      try {
-        const u = JSON.parse(storedUser);
-        userName = u.name || 'Chanthy';
-        userId = u.uid || 'unknown';
-      } catch(e){}
-    }
-
-    const journalTitle = `Journal: ${format(selectedDate, 'MMM d, yyyy')}`;
-
     setIsSharingJournal(true);
-    setGeneratedShareLink('PENDING');
-
-    import('../services/firebase')
-      .then(({ createSharedNote }) => {
-        return createSharedNote(
-          userId,
-          userName,
-          'journal',
-          journalTitle,
-          currentEntry
-        );
-      })
-      .then((shareId) => {
-        const cloudLink = window.location.origin + window.location.pathname + '?share=' + shareId;
-        setGeneratedShareLink(cloudLink);
-      })
-      .catch((error: any) => {
-        console.error("Firestore sharing failed:", error);
-        alert(`Failed to create clean shared link: ${error.message || error}`);
-        setGeneratedShareLink(null);
-      })
-      .finally(() => {
-        setIsSharingJournal(false);
-      });
+    try {
+      const { createSharedNote } = await import('../services/firebase');
+      const storedUser = localStorage.getItem('dps_user');
+      let userName = 'Chanthy';
+      let userId = 'unknown';
+      if (storedUser) {
+        try {
+          const u = JSON.parse(storedUser);
+          userName = u.name || 'Chanthy';
+          userId = u.uid || 'unknown';
+        } catch(e){}
+      }
+      
+      const shareId = await createSharedNote(
+        userId,
+        userName,
+        'journal',
+        `Journal: ${format(selectedDate, 'MMM d, yyyy')}`,
+        currentEntry
+      );
+      
+      const link = window.location.origin + window.location.pathname + '?share=' + shareId;
+      setGeneratedShareLink(link);
+    } catch (error: any) {
+      console.error(error);
+      alert(`Failed to generate shared link: ${error?.message || error || 'Unknown error'}`);
+    } finally {
+      setIsSharingJournal(false);
+    }
   };
 
   const generateDailyPrompt = async (force: boolean = false) => {
@@ -1038,45 +1029,21 @@ Keep the advice direct, mature, and completely focused on human performance. Avo
             <p className="text-xs text-slate-500">
               Anyone with this link can view and import exactly your custom Daily Journal Entry for this specific date!
             </p>
-
-            <div className="flex items-center justify-between text-[9px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-950/40 px-3 py-1.5 rounded-xl border border-slate-100 dark:border-slate-800/40">
-              <span>Link Status</span>
-              <span>
-                {generatedShareLink !== 'PENDING' && generatedShareLink.includes('?share=') ? (
-                  <span className="text-emerald-500 font-black flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span> Cloud Sync Active
-                  </span>
-                ) : (
-                  <span className="text-orange-500 font-black flex items-center gap-1.5">
-                    <span className="animate-spin inline-block h-2 w-2 border-t-2 border-orange-500 rounded-full mr-1"></span> Building Cloud Link...
-                  </span>
-                )}
-              </span>
-            </div>
             
             <div className="flex items-center bg-slate-50 dark:bg-slate-950 p-3 rounded-2xl border border-slate-200/60 dark:border-slate-800">
               <input 
                 type="text" 
                 readOnly 
-                value={generatedShareLink === 'PENDING' ? 'Generating clean secure link...' : generatedShareLink} 
-                onClick={(e) => generatedShareLink !== 'PENDING' && (e.target as HTMLInputElement).select()}
-                className="flex-1 bg-transparent text-xs text-slate-700 dark:text-slate-300 outline-none select-all truncate pr-2 font-mono cursor-pointer disabled:opacity-50"
-                disabled={generatedShareLink === 'PENDING'}
-                title={generatedShareLink === 'PENDING' ? "Generating link..." : "Click to select all text"}
+                value={generatedShareLink} 
+                className="flex-1 bg-transparent text-xs text-slate-705 dark:text-slate-300 outline-none select-all truncate pr-2 font-mono"
               />
               <button 
-                onClick={async () => {
-                  if (generatedShareLink === 'PENDING') return;
-                  const success = await copyToClipboard(generatedShareLink);
-                  if (success) {
-                    setIsCopied(true);
-                    setTimeout(() => setIsCopied(false), 2000);
-                  } else {
-                    alert("Unable to copy automatically. Please copy the link manually from the input field.");
-                  }
+                onClick={() => {
+                  navigator.clipboard.writeText(generatedShareLink);
+                  setIsCopied(true);
+                  setTimeout(() => setIsCopied(false), 2000);
                 }}
-                disabled={generatedShareLink === 'PENDING'}
-                className="h-8 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-[10px] uppercase font-black tracking-widest rounded-xl transition-all disabled:opacity-40 disabled:scale-100"
+                className="h-8 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-[10px] uppercase font-black tracking-widest rounded-xl transition-all"
               >
                 {isCopied ? 'Copied!' : 'Copy'}
               </button>

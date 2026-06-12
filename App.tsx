@@ -669,18 +669,8 @@ const App: React.FC = () => {
         redo();
       }
     };
-    
-    const handlePayloadTooLarge = (e: any) => {
-        const title = e.detail?.title || 'Topic';
-        alert(`The topic "${title}" is too large to sync to the cloud (exceeds 1MB). This is likely because it contains many large pasted images. Please split your notes into multiple topics to ensure they are saved safely.`);
-    };
-
     window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('PAYLOAD_TOO_LARGE', handlePayloadTooLarge);
-    return () => {
-        window.removeEventListener('keydown', handleKeyDown);
-        window.removeEventListener('PAYLOAD_TOO_LARGE', handlePayloadTooLarge);
-    };
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, [history, redoStack, data]);
 
   const handleAddStudent = async (parsedData?: Partial<Student> | Partial<Student>[]) => {
