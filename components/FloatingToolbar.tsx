@@ -171,7 +171,8 @@ export const FloatingToolbar = () => {
         document.execCommand('fontSize', false, '7');
 
         const fontTags = document.querySelectorAll('font[size="7"]');
-        fontTags.forEach(tag => {
+        fontTags.forEach(node => {
+            const tag = node as HTMLElement;
             const span = document.createElement('span');
             span.style.fontSize = `${size}px`;
             

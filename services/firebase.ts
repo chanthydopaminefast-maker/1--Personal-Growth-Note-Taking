@@ -14,6 +14,7 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPasswor
 import { AppData, BackupEntry, Student } from '../types';
 import firebaseConfig from '../firebase-applet-config.json';
 import { storage } from './storage';
+import { compressObject, decompressObject } from './sharingEncoder';
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
@@ -219,11 +220,8 @@ export const subscribeToData = (
         ...filteredMainData 
       } = mainData;
 
-      // Check for pending updates to main settings document
-      if (!sub.pendingUpdates.has('mainData')) {
-        sub.currentData = { ...sub.currentData, ...filteredMainData };
-        notifyChange();
-      }
+      sub.currentData = { ...sub.currentData, ...filteredMainData };
+      notifyChange();
       
       // Backward compatibility Migration: if habits exist in main doc, move them to subcollection
       if (mainData.habits && Array.isArray(mainData.habits) && mainData.habits.length > 0) {
@@ -247,7 +245,7 @@ export const subscribeToData = (
   const habitsRef = collection(db, 'users', userId, 'habits');
   const unsubHabits = onSnapshot(habitsRef, (querySnap) => {
     const sub = activeSubscriptions.get(userId);
-    if (sub && !sub.pendingUpdates.has('habits')) {
+    if (sub) {
       sub.currentData.habits = querySnap.docs.map(d => d.data() as any).sort((a, b) => (a.order || 0) - (b.order || 0));
       notifyChange();
     }
@@ -320,9 +318,7 @@ export const subscribeToData = (
     if (sub) {
       const completions: any = { ...sub.currentData.habitCompletions };
       querySnap.docs.forEach(d => { 
-        if (!sub.pendingUpdates.has(`habitCompletions/${d.id}`)) {
-          completions[d.id] = d.data(); 
-        }
+        completions[d.id] = d.data(); 
       });
       sub.currentData.habitCompletions = completions;
       notifyChange();
@@ -366,9 +362,6 @@ export const saveData = async (userId: string, data: AppData) => {
   // Prioritize local update to cache
   updateLocalCache(userId, data);
 
-  const sub = activeSubscriptions.get(userId);
-  if (sub) sub.pendingUpdates.add('mainData');
-
   const { 
     students, 
     expenses, 
@@ -388,11 +381,6 @@ export const saveData = async (userId: string, data: AppData) => {
     await setDoc(docRef, mainSettings, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, docRef.path);
-  } finally {
-    if (sub) {
-      // Clear pending status after a delay to ensure snapshot with new data is likely processed
-      setTimeout(() => sub.pendingUpdates.delete('mainData'), 3000);
-    }
   }
 };
 
@@ -406,7 +394,6 @@ export const saveHabitCompletion = async (userId: string, date: string, habitId:
     const day = { ...(completions[date] || {}), [habitId]: completed };
     completions[date] = day;
     updateLocalCache(userId, { habitCompletions: completions });
-    sub.pendingUpdates.add(`habitCompletions/${date}`);
   }
 
   try {
@@ -414,10 +401,6 @@ export const saveHabitCompletion = async (userId: string, date: string, habitId:
     await setDoc(docRef, { [habitId]: completed }, { merge: true });
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `users/${userId}/habitCompletions/${date}`);
-  } finally {
-    if (sub) {
-      setTimeout(() => sub.pendingUpdates.delete(`habitCompletions/${date}`), 3000);
-    }
   }
 };
 
@@ -592,7 +575,6 @@ export const saveHabitList = async (userId: string, habits: any[]) => {
       if (idx !== -1) currentHabits[idx] = newH; else currentHabits.push(newH);
     });
     updateLocalCache(userId, { habits: currentHabits });
-    sub.pendingUpdates.add('habits');
   }
 
   const batch = writeBatch(db);
@@ -604,10 +586,6 @@ export const saveHabitList = async (userId: string, habits: any[]) => {
     await batch.commit();
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `users/${userId}/habits/batch`);
-  } finally {
-    if (sub) {
-      setTimeout(() => sub.pendingUpdates.delete('habits'), 3000);
-    }
   }
 };
 
@@ -618,7 +596,6 @@ export const deleteHabit = async (userId: string, habitId: string) => {
   const sub = activeSubscriptions.get(userId);
   if (sub) {
     updateLocalCache(userId, { habits: (sub.currentData.habits || []).filter(h => h.id !== habitId) });
-    sub.pendingUpdates.add('habits');
   }
 
   try {
@@ -626,10 +603,6 @@ export const deleteHabit = async (userId: string, habitId: string) => {
     await deleteDoc(docRef);
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `users/${userId}/habits/${habitId}`);
-  } finally {
-    if (sub) {
-      setTimeout(() => sub.pendingUpdates.delete('habits'), 3000);
-    }
   }
 };
 
@@ -673,19 +646,34 @@ export const getCloudBackups = async (): Promise<Partial<BackupEntry>[]> => {
 
 export const getSyncStatus = () => !isOffline;
 
-// Global Shared note helper functions
-const sanitizeForFirestore = (obj: any): any => {
+// Global Shared note circular-safe cleanup
+const removeCircularAndSanitize = (obj: any, seen = new WeakSet()): any => {
   if (obj === undefined) return null;
   if (obj === null || typeof obj !== 'object') return obj;
-  if (Array.isArray(obj)) {
-    return obj.map(item => sanitizeForFirestore(item)).filter(item => item !== undefined);
+  
+  if (seen.has(obj)) {
+    return null; // Break circularity safely
   }
+  
+  // Guard things that look circular or DOM/internal-like or React elements
+  if (obj.$$typeof || typeof obj === 'function') {
+    return null; 
+  }
+
+  seen.add(obj);
+
+  if (Array.isArray(obj)) {
+    return obj
+      .map(item => removeCircularAndSanitize(item, seen))
+      .filter(item => item !== undefined && item !== null);
+  }
+
   const result: any = {};
   for (const key in obj) {
     if (Object.prototype.hasOwnProperty.call(obj, key)) {
       const value = obj[key];
-      if (value !== undefined) {
-        result[key] = sanitizeForFirestore(value);
+      if (value !== undefined && typeof value !== 'function') {
+        result[key] = removeCircularAndSanitize(value, seen);
       }
     }
   }
@@ -700,25 +688,116 @@ export const createSharedNote = async (
   payload: any
 ): Promise<string> => {
   const shareId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  
+  // 1. Sanitize circularities and prune non-serializable content
+  const sanitizedPayload = removeCircularAndSanitize(payload || {});
+  
+  // 2. Compress the payload asynchronously
+  const { compressed, isCompressed } = await compressObject(sanitizedPayload);
+  
+  // 3. Chunking rules: Firestore maximum is 1MB. We slice at 600,000 characters (approx 600KB) for safety.
+  const CHUNK_SIZE_LIMIT = 600000;
+  const isChunked = compressed.length > CHUNK_SIZE_LIMIT;
+  
   const shareRef = doc(db, 'sharedNotes', shareId);
-  const safeData = {
+  const metadata: any = {
     id: String(shareId),
     ownerId: String(userId || 'unknown').substring(0, 120),
     ownerName: String(ownerName || 'Chanthy').substring(0, 120),
     type: String(type || 'self-learning').substring(0, 45),
     title: String(title || 'Untitled').substring(0, 250),
-    payload: sanitizeForFirestore(payload || {}),
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    isCompressed,
+    isChunked,
   };
-  await setDoc(shareRef, safeData);
+  
+  if (!isChunked) {
+    // Save directly in parent document
+    metadata.payloadData = compressed;
+    await setDoc(shareRef, metadata);
+  } else {
+    const numChunks = Math.ceil(compressed.length / CHUNK_SIZE_LIMIT);
+    metadata.numChunks = numChunks;
+    metadata.totalSize = compressed.length;
+    metadata.payloadData = null; // Saved in pieces
+    
+    // Save parent metadata document
+    await setDoc(shareRef, metadata);
+    
+    // Save chunks in parallel
+    const chunkPromises = [];
+    for (let i = 0; i < numChunks; i++) {
+      const chunkData = compressed.substring(i * CHUNK_SIZE_LIMIT, (i + 1) * CHUNK_SIZE_LIMIT);
+      const chunkRef = doc(db, 'sharedNotes', `${shareId}_chunk_${i}`);
+      chunkPromises.push(
+        setDoc(chunkRef, {
+          shareId,
+          chunkIndex: i,
+          data: chunkData,
+          createdAt: metadata.createdAt,
+        })
+      );
+    }
+    await Promise.all(chunkPromises);
+  }
+  
   return shareId;
 };
 
 export const getSharedNote = async (shareId: string): Promise<any> => {
   const shareRef = doc(db, 'sharedNotes', shareId);
   const docSnap = await getDoc(shareRef);
-  if (docSnap.exists()) {
-    return docSnap.data();
+  if (!docSnap.exists()) {
+    return null;
   }
-  return null;
+  
+  const metadata = docSnap.data() as any;
+  let fullPayloadString = '';
+  
+  if (metadata.isChunked) {
+    // Fetch chunks in parallel
+    const numChunks = metadata.numChunks || 0;
+    const chunkPromises = [];
+    for (let i = 0; i < numChunks; i++) {
+      const chunkRef = doc(db, 'sharedNotes', `${shareId}_chunk_${i}`);
+      chunkPromises.push(getDoc(chunkRef));
+    }
+    
+    const chunkSnaps = await Promise.all(chunkPromises);
+    const chunksData: string[] = new Array(numChunks);
+    
+    chunkSnaps.forEach((snap, idx) => {
+      if (snap.exists()) {
+        const dataVal = snap.data();
+        const index = dataVal.chunkIndex !== undefined ? dataVal.chunkIndex : idx;
+        chunksData[index] = dataVal.data || '';
+      } else {
+        console.warn(`Chunk ${idx} is missing for shared note ${shareId}`);
+        chunksData[idx] = '';
+      }
+    });
+    
+    fullPayloadString = chunksData.join('');
+  } else {
+    fullPayloadString = metadata.payloadData || '';
+  }
+  
+  // Backwards compatibility for raw uncompressed old shares
+  if (metadata.payload && !metadata.isCompressed && !metadata.isChunked && !metadata.payloadData) {
+    return metadata;
+  }
+  
+  try {
+    const decompressedPayload = await decompressObject(fullPayloadString, !!metadata.isCompressed);
+    return {
+      ...metadata,
+      payload: decompressedPayload
+    };
+  } catch (err) {
+    console.error("Failed to reconstruct or decompress shared note:", err);
+    return {
+      ...metadata,
+      payload: {}
+    };
+  }
 };

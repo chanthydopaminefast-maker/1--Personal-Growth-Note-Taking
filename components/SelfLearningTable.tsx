@@ -71,7 +71,88 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
   const [sharingTopicId, setSharingTopicId] = useState<string | null>(null);
   const [generatedShareLink, setGeneratedShareLink] = useState<string | null>(null);
   const [isCopied, setIsCopied] = useState(false);
+  const [sharingTopic, setSharingTopic] = useState<any | null>(null);
+  const [isCloudShareLoading, setIsCloudShareLoading] = useState(false);
+  const [cloudShareError, setCloudShareError] = useState<string | null>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importJsonText, setImportJsonText] = useState('');
+  const [isCopiedJson, setIsCopiedJson] = useState(false);
   const [isArchiveFolderOpen, setIsArchiveFolderOpen] = useState(false);
+
+  const getTopicSizeString = (topic: any): string => {
+    try {
+      const bytes = JSON.stringify(topic).length;
+      if (bytes < 1024) return `${bytes} B`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+      return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+    } catch (e) {
+      return "Unknown size";
+    }
+  };
+
+  const isTooLargeForCloud = (topic: any): boolean => {
+    try {
+      const bytes = JSON.stringify(topic).length;
+      return bytes >= 1024 * 1024; // 1MB Firestore limit
+    } catch (e) {
+      return false;
+    }
+  };
+
+  const downloadTopicJson = (topic: any) => {
+    const blob = new Blob([JSON.stringify(topic, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${topic.title.replace(/[^a-z0-9]/gi, '_')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const copyTopicJsonToClipboard = (topic: any) => {
+    try {
+      navigator.clipboard.writeText(JSON.stringify(topic, null, 2));
+      setIsCopiedJson(true);
+      setTimeout(() => setIsCopiedJson(false), 2000);
+    } catch (err) {
+      alert("Failed to copy JSON to clipboard. Please select and copy manually.");
+    }
+  };
+
+  const handleImportJsonOrText = (jsonText: string) => {
+    try {
+      const parsed = JSON.parse(jsonText);
+      if (!parsed || !parsed.title) {
+        throw new Error("Invalid format. The JSON must contain a 'title' field.");
+      }
+      
+      const cloneTopicWithNewIds = (topic: any): any => {
+        const newId = uuidv4();
+        return {
+          ...topic,
+          id: newId,
+          children: topic.children ? topic.children.map(cloneTopicWithNewIds) : undefined
+        };
+      };
+
+      const clonedTopic = cloneTopicWithNewIds(parsed);
+      const currentTopics = data.selfLearningTopics || [];
+      const updatedTopics = [...currentTopics, clonedTopic];
+      
+      if (onUpdateTopic) {
+        onUpdateTopic(updatedTopics, clonedTopic);
+      } else {
+        onUpdate({ ...data, selfLearningTopics: updatedTopics });
+      }
+      alert(`Successfully imported folder: "${clonedTopic.title}"!`);
+      setIsImportModalOpen(false);
+      setImportJsonText('');
+    } catch (err: any) {
+      alert("Failed to import. " + (err.message || "Please check that the JSON is valid and formatted correctly."));
+    }
+  };
 
   const filterTopics = (items: DPSSTopic[]): DPSSTopic[] => {
     if (!Array.isArray(items)) return [];
@@ -2838,8 +2919,19 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
     return colors[hash % colors.length];
   };
 
-  const handleShareTopic = async (topic: any) => {
-    setSharingTopicId(topic.id);
+  const handleShareTopic = (topic: any) => {
+    setSharingTopic(topic);
+    setGeneratedShareLink(null);
+    setCloudShareError(null);
+    setIsCloudShareLoading(false);
+  };
+
+  const handleGenerateCloudLink = async () => {
+    if (!sharingTopic) return;
+    setIsCloudShareLoading(true);
+    setCloudShareError(null);
+    setGeneratedShareLink(null);
+
     const storedUser = localStorage.getItem('dps_user');
     let userName = 'Chanthy';
     let userId = 'unknown';
@@ -2848,21 +2940,19 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
         const u = JSON.parse(storedUser);
         userName = u.name || 'Chanthy';
         userId = u.uid || 'unknown';
-      } catch(e){}
+      } catch (e) {}
     }
 
     try {
       const { createSharedNote } = await import('../services/firebase');
-      
-      const shareId = await createSharedNote(userId, userName, 'self-learning', topic.title, topic);
-      
+      const shareId = await createSharedNote(userId, userName, 'self-learning', sharingTopic.title, sharingTopic);
       const link = window.location.origin + window.location.pathname + '?share=' + shareId;
       setGeneratedShareLink(link);
     } catch (error: any) {
       console.error("Firestore sharing failed:", error);
-      alert("Failed to create shareable link. Please ensure your database is connected and available.");
+      setCloudShareError("Failed to create cloud link. Your folder may exceed the 1MB limit, or you may be offline. Please use the Download or Copy options below!");
     } finally {
-      setSharingTopicId(null);
+      setIsCloudShareLoading(false);
     }
   };
 
@@ -3356,12 +3446,22 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
         <div className="flex-1 overflow-y-auto pr-1 -mr-1 space-y-3 max-[767px]:landscape:space-y-2.5 custom-scrollbar flex flex-col">
           <div className="flex flex-col max-[767px]:landscape:flex-row gap-2 shrink-0">
             <div className="flex-1 flex flex-col gap-1.5 max-[767px]:landscape:flex-row max-[767px]:landscape:gap-1.5">
-              <button 
-                onClick={() => addTopic()} 
-                className="w-full max-[767px]:landscape:flex-1 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-2xl text-[10px] font-black flex items-center justify-center gap-1.5 hover:from-emerald-600 hover:to-emerald-700 shadow-xl shadow-emerald-500/20 active:scale-95 transition-all whitespace-nowrap"
-              >
-                <Plus size={14} /> Add Topic
-              </button>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => addTopic()} 
+                  className="flex-1 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white rounded-2xl text-[10px] font-black flex items-center justify-center gap-1.5 hover:from-emerald-600 hover:to-emerald-700 shadow-xl shadow-emerald-500/20 active:scale-95 transition-all whitespace-nowrap"
+                >
+                  <Plus size={14} /> Add Topic
+                </button>
+                
+                <button 
+                  onClick={() => setIsImportModalOpen(true)} 
+                  className="px-3.5 py-2.5 bg-sky-600 text-white rounded-2xl text-[10px] font-black flex items-center justify-center gap-1 hover:bg-sky-700 shadow-xl shadow-sky-500/20 active:scale-95 transition-all whitespace-nowrap"
+                  title="Import Topic Folder from JSON or Clipboard"
+                >
+                  <FileUp size={14} /> Import
+                </button>
+              </div>
               
               {!isSelectedTopicPlan && (
                 <>
@@ -4673,7 +4773,207 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
         )}
       </div>
 
-      {generatedShareLink && (
+      {sharingTopic && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md flex items-center justify-center p-4 z-[99999] animate-fade-in font-sans">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-[24px] max-w-lg w-full shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b pb-3 border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-3 text-orange-500">
+                <Share2 size={24} className="stroke-[2.5]" />
+                <h3 className="text-sm font-black tracking-wider uppercase text-slate-800 dark:text-slate-100">Folder Share Hub</h3>
+              </div>
+              <span className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+                {getTopicSizeString(sharingTopic)}
+              </span>
+            </div>
+
+            <div className="space-y-1">
+              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Selected Folder</h4>
+              <p className="text-sm font-black text-slate-800 dark:text-slate-100 truncate">{sharingTopic.title}</p>
+              <p className="text-xs text-slate-400">Contains notes, nested sub-folders, styles, and custom table configurations.</p>
+            </div>
+
+            {isTooLargeForCloud(sharingTopic) && (
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-450 rounded-xl text-xs flex flex-col gap-1">
+                <p className="font-extrabold flex items-center gap-1.5 uppercase tracking-wide">⚡ Smart Compression & Chunking Enabled</p>
+                <p className="text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
+                  This folder is <strong>{getTopicSizeString(sharingTopic)}</strong>. To support this size over the standard 1MB cloud limit, our system will automatically compress and split the data into smaller chunks so that you can share it seamlessly!
+                </p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <button
+                onClick={() => downloadTopicJson(sharingTopic)}
+                className="p-3.5 flex flex-col items-center justify-center gap-2 border border-slate-200 hover:border-orange-500/30 hover:bg-orange-50/10 dark:border-slate-800 dark:hover:border-orange-500/40 rounded-2xl group transition-all text-center font-sans"
+              >
+                <FileDown size={22} className="text-slate-500 group-hover:text-orange-500 group-hover:scale-105 transition-all mx-auto" />
+                <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200 block">Download File</span>
+                <span className="text-[9px] text-slate-400 block">Best for large size (8MB+)</span>
+              </button>
+
+              <button
+                onClick={() => copyTopicJsonToClipboard(sharingTopic)}
+                className="p-3.5 flex flex-col items-center justify-center gap-2 border border-slate-200 hover:border-orange-500/30 hover:bg-orange-50/10 dark:border-slate-800 dark:hover:border-orange-500/40 rounded-2xl group transition-all text-center font-sans"
+              >
+                <Copy size={22} className="text-slate-500 group-hover:text-orange-500 group-hover:scale-105 transition-all mx-auto" />
+                <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200 block">
+                  {isCopiedJson ? "Copied!" : "Copy JSON Data"}
+                </span>
+                <span className="text-[9px] text-slate-400 block">Paste & send directly</span>
+              </button>
+            </div>
+
+            <div className="border-t border-slate-150 dark:border-slate-800 pt-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h5 className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Option 3: Generates Cloud Link</h5>
+                <span className="text-[9px] text-slate-400 font-medium">Max 1MB limit</span>
+              </div>
+
+            {!generatedShareLink ? (
+                <div className="space-y-3">
+                  <button
+                    onClick={handleGenerateCloudLink}
+                    disabled={isCloudShareLoading}
+                    className="w-full h-11 bg-orange-500 hover:bg-orange-600 disabled:bg-slate-200/50 dark:disabled:bg-slate-800/50 text-white font-black text-xs uppercase tracking-widest rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95 animate-fade-in font-sans"
+                  >
+                    {isCloudShareLoading ? (
+                      <>
+                        <Loader2 size={16} className="animate-spin" />
+                        Generating Link...
+                      </>
+                    ) : (
+                      <>
+                        <Share2 size={14} />
+                        Generate Shareable Cloud Link
+                      </>
+                    )}
+                  </button>
+                  
+                  {isCloudShareLoading && (
+                    <div className="flex flex-col items-center gap-1.5 animate-pulse">
+                      <p className="text-[10px] font-black text-orange-600 uppercase tracking-tighter">Preparing Cloud Data...</p>
+                      <p className="text-[9px] text-slate-400 max-w-[80%] text-center leading-tight">
+                        This may take a moment for larger folders as we compress and secure your notes for the cloud.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center bg-slate-50 dark:bg-slate-950 p-3 rounded-2xl border border-slate-200/60 dark:border-slate-800 font-sans">
+                  <input
+                    type="text"
+                    readOnly
+                    value={generatedShareLink}
+                    className="flex-1 bg-transparent text-xs text-slate-705 dark:text-slate-300 outline-none select-all truncate pr-2 font-mono"
+                  />
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(generatedShareLink);
+                      setIsCopied(true);
+                      setTimeout(() => setIsCopied(false), 2000);
+                    }}
+                    className="h-8 px-4 bg-orange-500 hover:bg-orange-600 active:scale-95 text-white text-[10px] uppercase font-black tracking-widest rounded-xl transition-all font-sans"
+                  >
+                    {isCopied ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+              )}
+
+              {cloudShareError && (
+                <p className="text-[11px] text-red-500 text-center leading-relaxed font-semibold bg-red-500/5 p-2.5 rounded-xl border border-red-500/10 font-sans">
+                  {cloudShareError}
+                </p>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-100 dark:border-slate-800 font-sans">
+              <button
+                onClick={() => {
+                  setSharingTopic(null);
+                  setGeneratedShareLink(null);
+                  setCloudShareError(null);
+                }}
+                className="h-10 px-6 bg-slate-100 dark:bg-slate-805 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700/80 rounded-xl text-[10px] uppercase font-black tracking-widest transition-all"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isImportModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md flex items-center justify-center p-4 z-[99999] animate-fade-in font-sans">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-[24px] max-w-lg w-full shadow-2xl space-y-4 font-sans">
+            <div className="flex items-center gap-3 text-emerald-600 border-b pb-3 border-slate-100 dark:border-slate-800">
+              <FileUp size={24} className="stroke-[2.5]" />
+              <h3 className="text-sm font-black tracking-wider uppercase text-slate-800 dark:text-slate-100">Import Topic Folder</h3>
+            </div>
+
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Upload an exported topic <code>.json</code> file or paste its JSON source code below to import.
+            </p>
+
+            <div className="space-y-2 font-sans">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-black">Option 1: Upload JSON File</label>
+              <div 
+                onClick={() => {
+                  const input = document.createElement('input');
+                  input.type = 'file';
+                  input.accept = '.json';
+                  input.onchange = (e: any) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (evt: any) => {
+                      const text = evt.target.result;
+                      setImportJsonText(text);
+                    };
+                    reader.readAsText(file);
+                  };
+                  input.click();
+                }}
+                className="border-2 border-dashed border-slate-200 hover:border-orange-500/60 dark:border-slate-800 dark:hover:border-orange-500/40 p-6 rounded-2xl cursor-pointer text-center group transition-all"
+              >
+                <FileUp size={22} className="mx-auto text-slate-400 group-hover:text-orange-500 group-hover:scale-110 transition-all mb-1" />
+                <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">Choose Topic File (.json)</span>
+                <p className="text-[9px] text-slate-400 mt-0.5">Click to browse your device</p>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-sans">Option 2: Paste JSON Text</label>
+              <textarea
+                value={importJsonText}
+                onChange={(e) => setImportJsonText(e.target.value)}
+                placeholder='Paste raw JSON starting with {"title": "..."}'
+                className="w-full h-32 p-3 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-205 dark:border-slate-800 text-xs font-mono outline-none focus:border-orange-500 transition-all font-sans"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 font-sans">
+              <button
+                onClick={() => {
+                  setIsImportModalOpen(false);
+                  setImportJsonText('');
+                }}
+                className="h-10 px-5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700/80 rounded-xl text-[10px] uppercase font-black tracking-widest transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleImportJsonOrText(importJsonText)}
+                disabled={!importJsonText.trim()}
+                className="h-10 px-6 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 text-white text-[10px] font-black uppercase tracking-widest rounded-xl shadow-xl shadow-emerald-500/10 transition-all font-sans font-black"
+              >
+                Import Folder
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {false && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md flex items-center justify-center p-4 z-[99999] animate-fade-in font-sans">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-[24px] max-w-md w-full shadow-2xl space-y-4">
             <div className="flex items-center gap-3 text-orange-500">

@@ -318,7 +318,8 @@ export const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings, onUp
                     </div>
 
                     <p className="text-[10px] text-slate-400 leading-tight text-center">
-                        Import a previously downloaded `.json` backup file to restore your settings, student records, and custom progress data.
+                        Import a previously downloaded `.json` system backup file to restore your settings, student records, and custom progress data.
+                        <br/><span className="text-orange-500 font-bold mt-1 inline-block">Note: To import separate Topic Folders, use the "Import" button directly in the Note-taking or Self-learning tabs.</span>
                     </p>
 
                     {importError && (
