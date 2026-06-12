@@ -2958,20 +2958,19 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
           </div>
 
           <div className="flex gap-1 shrink-0">
-            {isSelected && (
-              <div className="relative shrink-0">
-                <button 
-                  onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === topic.id ? null : topic.id); }}
-                  className={`p-1.5 rounded transition-all flex items-center ${openMenuId === topic.id ? 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
-                  title="More Options"
+            <div className="relative shrink-0">
+              <button 
+                onClick={(e) => { e.stopPropagation(); setOpenMenuId(openMenuId === topic.id ? null : topic.id); }}
+                className={`p-1.5 rounded transition-all flex items-center ${openMenuId === topic.id ? 'bg-slate-300/60 dark:bg-slate-700 text-slate-800 dark:text-slate-200' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200/50 dark:hover:bg-slate-800'}`}
+                title="More Options"
+              >
+                <MoreHorizontal size={15} />
+              </button>
+              
+              {openMenuId === topic.id && (
+                <div className="absolute right-0 top-full mt-2 bg-white dark:bg-slate-800 shadow-xl rounded-xl border border-slate-200 dark:border-slate-700 py-1.5 flex flex-col min-w-[160px] z-[100]"
+                     onClick={e => e.stopPropagation()}
                 >
-                  <MoreHorizontal size={15} />
-                </button>
-                
-                {openMenuId === topic.id && (
-                  <div className="absolute right-0 top-full mt-2 bg-white dark:bg-slate-800 shadow-xl rounded-xl border border-slate-200 dark:border-slate-700 py-1.5 flex flex-col min-w-[160px] z-[100]"
-                       onClick={e => e.stopPropagation()}
-                  >
                     <div className="flex px-2 pb-1 gap-1 border-b border-slate-100 dark:border-slate-700 mb-1">
                       <button 
                         onClick={(e) => { e.stopPropagation(); handleMoveTopicUpDown(topic.id, 'up'); setOpenMenuId(null); }}
@@ -3083,7 +3082,6 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                   </div>
                 )}
               </div>
-            )}
           </div>
         </div>
         
