@@ -2996,7 +2996,9 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
   const handleDragLeave = (e: React.DragEvent, targetId: string | null) => {
     e.preventDefault();
     e.stopPropagation();
-    setDragOverTopicId(null);
+    if (targetId === null) {
+      setDragOverTopicId(null);
+    }
   };
 
   const handleDrop = (e: React.DragEvent, targetId: string | null) => {
@@ -3208,19 +3210,18 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
     return (
       <div 
         key={topic.id} 
-        className={`select-none transition-all duration-200 ${draggedTopicId === topic.id ? 'opacity-30' : 'opacity-100'} ${dragOverTopicId === `${topic.id}-before` ? 'border-t-2 border-indigo-500' : ''} ${dragOverTopicId === `${topic.id}-after` ? 'border-b-2 border-indigo-500' : ''} ${dragOverTopicId === `${topic.id}-inside` ? 'ring-2 ring-indigo-500 rounded-xl bg-indigo-50/50 dark:bg-indigo-900/20' : ''}`} 
         style={{ marginLeft: `${depth * 8}px` }}
-        draggable={!topic.isLocked}
-        onDragStart={(e) => handleDragStart(e, topic.id)}
-        onDragOver={(e) => handleDragOver(e, topic.id)}
-        onDragLeave={(e) => handleDragLeave(e, topic.id)}
-        onDrop={(e) => handleDrop(e, topic.id)}
-        onDragEnd={() => {
-          setDraggedTopicId(null);
-          setDragOverTopicId(null);
-        }}
+        className="transition-all duration-200"
       >
         <div 
+          draggable={!topic.isLocked}
+          onDragStart={(e) => handleDragStart(e, topic.id)}
+          onDragOver={(e) => handleDragOver(e, topic.id)}
+          onDrop={(e) => handleDrop(e, topic.id)}
+          onDragEnd={() => {
+            setDraggedTopicId(null);
+            setDragOverTopicId(null);
+          }}
           onClick={() => {
             setSelectedTopicId(topic.id);
             setOpenMenuId(null);
@@ -3228,10 +3229,16 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
               setExpandedTopics(prev => ({ ...prev, [topic.id]: !prev[topic.id] }));
             }
           }} 
-          className={`relative group flex items-center justify-between p-2 my-1 rounded-xl cursor-pointer border transition-all ${openMenuId === topic.id ? 'z-[100]' : 'z-10'} ${
+          className={`relative group flex items-center justify-between p-2 my-1 rounded-xl cursor-pointer border transition-all select-none ${openMenuId === topic.id ? 'z-[100]' : 'z-10'} ${
             isSelected 
               ? `${style.activeBg} ${style.border} ${style.text} shadow-sm scale-[1.01]` 
               : `bg-white/40 dark:bg-slate-900/10 ${style.border} ${style.text} hover:scale-[1.01] hover:bg-white/70`
+          } ${draggedTopicId === topic.id ? 'opacity-30' : 'opacity-100'} ${
+            dragOverTopicId === `${topic.id}-before` ? 'border-t-2 border-indigo-500 scale-[1.01]' : ''
+          } ${
+            dragOverTopicId === `${topic.id}-after` ? 'border-b-2 border-indigo-500 scale-[1.01]' : ''
+          } ${
+            dragOverTopicId === `${topic.id}-inside` ? 'ring-2 ring-indigo-500 rounded-xl bg-orange-50/50 dark:bg-orange-900/20 scale-[1.01]' : ''
           }`}
         >
           <div className="flex items-center gap-1.5 min-w-0 flex-1">
