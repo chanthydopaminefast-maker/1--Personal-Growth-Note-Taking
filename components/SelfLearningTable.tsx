@@ -2956,20 +2956,27 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
     setDraggedTopicId(id);
     e.dataTransfer.setData('text/plain', id);
     e.dataTransfer.effectAllowed = 'move';
-
-    const dragIcon = document.createElement('div');
-    dragIcon.style.opacity = '0';
-    document.body.appendChild(dragIcon);
-    e.dataTransfer.setDragImage(dragIcon, 0, 0);
-    setTimeout(() => document.body.removeChild(dragIcon), 0);
   };
 
   const handleDragOver = (e: React.DragEvent, targetId: string | null) => {
     e.preventDefault();
     e.stopPropagation();
     if (draggedTopicId === targetId) return;
-    if (dragOverTopicId !== targetId) {
-      setDragOverTopicId(targetId);
+
+    let position = 'inside';
+    if (targetId) {
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      const y = e.clientY - rect.top;
+      if (y < rect.height * 0.25) {
+        position = 'before';
+      } else if (y > rect.height * 0.75) {
+        position = 'after';
+      }
+    }
+
+    const newTarget = targetId ? `${targetId}-${position}` : 'null-inside';
+    if (dragOverTopicId !== newTarget) {
+      setDragOverTopicId(newTarget);
     }
     e.dataTransfer.dropEffect = 'move';
   };
@@ -2977,33 +2984,25 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
   const handleDragLeave = (e: React.DragEvent, targetId: string | null) => {
     e.preventDefault();
     e.stopPropagation();
-    if (dragOverTopicId === targetId) {
-      setDragOverTopicId(null);
-    }
+    setDragOverTopicId(null);
   };
 
-  const handleDrop = (e: React.DragEvent, targetParentId: string | null) => {
+  const handleDrop = (e: React.DragEvent, targetId: string | null) => {
     e.preventDefault();
     e.stopPropagation();
+    
+    const dropState = dragOverTopicId || '';
     setDragOverTopicId(null);
+    
     const sourceId = e.dataTransfer.getData('text/plain') || draggedTopicId;
-    if (!sourceId || sourceId === targetParentId) {
+    if (!sourceId || sourceId === targetId) {
       setDraggedTopicId(null);
       return;
     }
 
-    // Recursive search to ensure we're not dropping a parent into its own child
-    const isChildOf = (parentId: string, targetId: string): boolean => {
-      const topic = findSpecificTopic(data.selfLearningTopics || [], parentId);
-      if (!topic || !topic.children) return false;
-      return topic.children.some(c => c.id === targetId || isChildOf(c.id, targetId));
-    };
-
-    if (targetParentId && isChildOf(sourceId, targetParentId)) {
-      alert("Cannot move a folder into its own sub-folder!");
-      setDraggedTopicId(null);
-      return;
-    }
+    let position = 'inside';
+    if (dropState.endsWith('-before')) position = 'before';
+    else if (dropState.endsWith('-after')) position = 'after';
 
     const findSpecificTopic = (items: DPSSTopic[], searchId: string): DPSSTopic | null => {
       for (const item of items) {
@@ -3015,6 +3014,19 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
       }
       return null;
     };
+
+    // Recursive search to ensure we're not dropping a parent into its own child
+    const isChildOf = (parentId: string, tId: string): boolean => {
+      const topic = findSpecificTopic(data.selfLearningTopics || [], parentId);
+      if (!topic || !topic.children) return false;
+      return topic.children.some(c => c.id === tId || isChildOf(c.id, tId));
+    };
+
+    if (targetId && isChildOf(sourceId, targetId)) {
+      alert("Cannot move a folder into its own sub-folder!");
+      setDraggedTopicId(null);
+      return;
+    }
 
     const topicToMove = findSpecificTopic(data.selfLearningTopics || [], sourceId);
     if (!topicToMove) {
@@ -3034,18 +3046,27 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
 
     // 2. Add to new position
     const addTopicToTarget = (items: DPSSTopic[]): DPSSTopic[] => {
-      if (targetParentId === null) {
+      if (targetId === null) {
         return [...items, topicToMove];
       }
-      return items.map(item => {
-        if (item.id === targetParentId) {
-          return { ...item, children: [...(item.children || []), topicToMove] };
+      
+      const newItems: DPSSTopic[] = [];
+      for (const item of items) {
+        if (item.id === targetId) {
+          if (position === 'before') {
+            newItems.push(topicToMove);
+            newItems.push({ ...item, children: item.children ? addTopicToTarget(item.children) : undefined });
+          } else if (position === 'after') {
+            newItems.push({ ...item, children: item.children ? addTopicToTarget(item.children) : undefined });
+            newItems.push(topicToMove);
+          } else {
+            newItems.push({ ...item, children: [...(item.children || []), topicToMove] });
+          }
+        } else {
+           newItems.push({ ...item, children: item.children ? addTopicToTarget(item.children) : undefined });
         }
-        if (item.children) {
-          return { ...item, children: addTopicToTarget(item.children) };
-        }
-        return item;
-      });
+      }
+      return newItems;
     };
 
     updated = addTopicToTarget(updated);
@@ -3171,7 +3192,7 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
     return (
       <div 
         key={topic.id} 
-        className={`select-none transition-all duration-200 ${draggedTopicId === topic.id ? 'opacity-30' : 'opacity-100'} ${dragOverTopicId === topic.id ? 'ring-2 ring-indigo-500 rounded-xl bg-indigo-50/50 dark:bg-indigo-900/20' : ''}`} 
+        className={`select-none transition-all duration-200 ${draggedTopicId === topic.id ? 'opacity-30' : 'opacity-100'} ${dragOverTopicId === `${topic.id}-before` ? 'border-t-2 border-indigo-500' : ''} ${dragOverTopicId === `${topic.id}-after` ? 'border-b-2 border-indigo-500' : ''} ${dragOverTopicId === `${topic.id}-inside` ? 'ring-2 ring-indigo-500 rounded-xl bg-indigo-50/50 dark:bg-indigo-900/20' : ''}`} 
         style={{ marginLeft: `${depth * 8}px` }}
         draggable={!topic.isLocked}
         onDragStart={(e) => handleDragStart(e, topic.id)}
@@ -3678,24 +3699,8 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
             </div>
           </div>
 
-          {/* Active Topics */}
-          <div 
-            className={`space-y-1 min-h-[50px] outline-none rounded-xl transition-all ${dragOverTopicId === null && draggedTopicId ? 'ring-2 ring-indigo-400/50 bg-indigo-50/30' : ''}`}
-            onDragOver={(e) => handleDragOver(e, null)}
-            onDragLeave={(e) => handleDragLeave(e, null)}
-            onDrop={(e) => handleDrop(e, null)}
-          >
-            {filteredTopics.length > 0 ? (
-              filteredTopics.map(t => renderTopic(t))
-            ) : (
-              <div className="text-center py-6 text-xs text-slate-400 select-none">
-                {searchTerm ? 'No matching topics found' : 'No active topics yet'}
-              </div>
-            )}
-          </div>
-
           {/* Favorite Stars */}
-          <div className="pt-4 border-t border-slate-200/65 dark:border-slate-800/60">
+          <div className="pb-4 border-b border-slate-200/65 dark:border-slate-800/60 w-full">
             <button
               onClick={() => setIsArchiveFolderOpen(prev => !prev)}
               className="w-full flex items-center justify-between p-2 rounded-xl bg-amber-50/50 dark:bg-slate-900/20 text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/20 border border-amber-100/40 transition-all select-none cursor-pointer"
@@ -3719,6 +3724,26 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
                     {searchTerm ? 'No matching favorite topics' : 'Favorite Stars is empty'}
                   </div>
                 )}
+              </div>
+            )}
+          </div>
+
+          {/* Active Topics */}
+          <div className="flex items-center gap-2 w-full pt-2">
+            <Folder size={15} className="text-slate-500" />
+            <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">Basic Files</span>
+          </div>
+          <div 
+            className={`space-y-1 min-h-[50px] outline-none rounded-xl transition-all ${dragOverTopicId === null && draggedTopicId ? 'ring-2 ring-indigo-400/50 bg-indigo-50/30' : ''}`}
+            onDragOver={(e) => handleDragOver(e, null)}
+            onDragLeave={(e) => handleDragLeave(e, null)}
+            onDrop={(e) => handleDrop(e, null)}
+          >
+            {filteredTopics.length > 0 ? (
+              filteredTopics.map(t => renderTopic(t))
+            ) : (
+              <div className="text-center py-6 text-xs text-slate-400 select-none">
+                {searchTerm ? 'No matching topics found' : 'No active topics yet'}
               </div>
             )}
           </div>
