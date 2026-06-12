@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { PAPER_STYLES } from '../src/styles/paperStyles';
 import { RichTextDiv } from './FloatingToolbar';
 import { DictationButton } from './DictationButton';
-import { copyToClipboard } from '../services/sharingEncoder';
+import { copyToClipboard, encodeToURLSafeBase64 } from '../services/sharingEncoder';
 
 interface DailyJournalProps {
   data: AppData;
@@ -54,7 +54,6 @@ const JournalBlock: React.FC<JournalBlockProps> = ({ title, icon, children, bgCo
   const [isCopied, setIsCopied] = useState(false);
 
   const handleShareJournal = async () => {
-    setIsSharingJournal(true);
     const storedUser = localStorage.getItem('dps_user');
     let userName = 'Chanthy';
     let userId = 'unknown';
@@ -66,26 +65,46 @@ const JournalBlock: React.FC<JournalBlockProps> = ({ title, icon, children, bgCo
       } catch(e){}
     }
 
+    const journalTitle = `Journal: ${format(selectedDate, 'MMM d, yyyy')}`;
+
+    // 1. Generate local fallback link instantly so the user has a copyable button in milliseconds
+    let fallbackLink = '';
     try {
-      const { createSharedNote } = await import('../services/firebase');
-      
-      const shareId = await createSharedNote(
-        userId,
-        userName,
-        'journal',
-        `Journal: ${format(selectedDate, 'MMM d, yyyy')}`,
-        currentEntry
-      );
-      
-      const link = window.location.origin + window.location.pathname + '?share=' + shareId;
-      setGeneratedShareLink(link);
-    } catch (error: any) {
-      console.error(error);
-      const errMsg = error?.message || error || 'Unknown error';
-      alert(`Failed to generate shared link: ${errMsg}\n\nPlease check your internet connection or try again.`);
-    } finally {
-      setIsSharingJournal(false);
+      const base64Payload = encodeToURLSafeBase64({
+        ownerId: userId,
+        ownerName: userName,
+        type: 'journal',
+        title: journalTitle,
+        payload: currentEntry
+      });
+      fallbackLink = window.location.origin + window.location.pathname + '?sharedData=' + base64Payload;
+      setGeneratedShareLink(fallbackLink);
+    } catch (e) {
+      console.error("Local journal link generation failed:", e);
     }
+
+    // 2. Start cloud registration asynchronously in the background. No blocking loaders.
+    setIsSharingJournal(true);
+    import('../services/firebase')
+      .then(({ createSharedNote }) => {
+        return createSharedNote(
+          userId,
+          userName,
+          'journal',
+          journalTitle,
+          currentEntry
+        );
+      })
+      .then((shareId) => {
+        const cloudLink = window.location.origin + window.location.pathname + '?share=' + shareId;
+        setGeneratedShareLink(cloudLink);
+      })
+      .catch((error: any) => {
+        console.warn("Firestore sharing failed in background (using local fallback link):", error);
+      })
+      .finally(() => {
+        setIsSharingJournal(false);
+      });
   };
 
   const generateDailyPrompt = async (force: boolean = false) => {
@@ -1032,6 +1051,21 @@ Keep the advice direct, mature, and completely focused on human performance. Avo
             <p className="text-xs text-slate-500">
               Anyone with this link can view and import exactly your custom Daily Journal Entry for this specific date!
             </p>
+
+            <div className="flex items-center justify-between text-[9px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-950/40 px-3 py-1.5 rounded-xl border border-slate-100 dark:border-slate-800/40">
+              <span>Link Status</span>
+              <span>
+                {generatedShareLink.includes('?share=') ? (
+                  <span className="text-emerald-500 font-black flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span> Cloud Sync Active
+                  </span>
+                ) : (
+                  <span className="text-orange-500 font-black flex items-center gap-1.5">
+                    <span className="animate-spin inline-block h-2 w-2 border-t-2 border-orange-500 rounded-full mr-1"></span> Building Cloud Link...
+                  </span>
+                )}
+              </span>
+            </div>
             
             <div className="flex items-center bg-slate-50 dark:bg-slate-950 p-3 rounded-2xl border border-slate-200/60 dark:border-slate-800">
               <input 

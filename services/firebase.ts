@@ -1,7 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { 
   getFirestore,
-  enableIndexedDbPersistence,
   doc, 
   onSnapshot, 
   setDoc, 
@@ -72,14 +71,7 @@ const reconstructTopics = (docs: any[]) => {
   return roots;
 };
 
-// Enable offline persistence so data isn't lost during connection blips or reloads
-enableIndexedDbPersistence(db).catch((err) => {
-  if (err.code == 'failed-precondition') {
-    console.warn('Multiple tabs open, persistence can only be enabled in one tab at a a time.');
-  } else if (err.code == 'unimplemented') {
-    console.warn('The current browser does not support all of the features required to enable persistence');
-  }
-});
+// Using real-time memory-only syncing for maximum speed and cross-device safety
 
 export const auth = getAuth(app);
 // Explicitly set persistence to LOCAL to ensure sessions survive reloads/redeploys
@@ -857,22 +849,44 @@ export const createSharedNote = async (
     ownerName: String(ownerName || 'Chanthy').substring(0, 120),
     type: String(type || 'self-learning').substring(0, 45),
     title: String(title || 'Untitled').substring(0, 250),
-    payload: sanitizeForFirestore(lightPayload || {}),
+    payload: null as any,
     createdAt: new Date().toISOString()
   };
 
   const writeOperation = async () => {
-    const batch = writeBatch(db);
-    const sizeBytes = new Blob([JSON.stringify(safeData)]).size;
-    if (sizeBytes > 950000) {
-      throw new Error('PAYLOAD_TOO_LARGE');
+    if (type === 'note-taking' || type === 'self-learning') {
+       // Clear payload on parent metadata doc to keep it tiny
+       safeData.payload = null;
+       
+       const batch = writeBatch(db);
+       batch.set(shareRef, safeData);
+       
+       const flatNodes = flattenTopicTree(lightPayload);
+       
+       for (const node of flatNodes) {
+          const nodeRef = doc(db, 'sharedNotes', shareId, 'nodes', node.id);
+          const serialized = sanitizeForFirestore(node);
+          const sizeBytes = new Blob([JSON.stringify(serialized)]).size;
+          if (sizeBytes > 950000) {
+              throw new Error('PAYLOAD_TOO_LARGE');
+          }
+          batch.set(nodeRef, serialized);
+       }
+       
+       await batch.commit();
+    } else {
+       // For journal, daily-note, and other non-tree types
+       safeData.payload = sanitizeForFirestore(lightPayload || {});
+       const sizeBytes = new Blob([JSON.stringify(safeData)]).size;
+       if (sizeBytes > 950000) {
+         throw new Error('PAYLOAD_TOO_LARGE');
+       }
+       await setDoc(shareRef, safeData);
     }
-    batch.set(shareRef, safeData);
-    await batch.commit();
   };
 
   const timeoutPromise = new Promise<never>((_, reject) => 
-    setTimeout(() => reject(new Error('TIMEOUT')), 15000)
+    setTimeout(() => reject(new Error('TIMEOUT')), 45000)
   );
 
   await Promise.race([

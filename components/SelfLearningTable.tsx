@@ -4,7 +4,7 @@ import { AppData, DPSSTopic } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { callNeuralEngine } from '../services/neuralEngine';
 import { compressImage } from '../services/imageUtils';
-import { copyToClipboard } from '../services/sharingEncoder';
+import { copyToClipboard, encodeToURLSafeBase64 } from '../services/sharingEncoder';
 import { AISelfLearningModal } from './AISelfLearningModal';
 import { PAPER_STYLES } from '../src/styles/paperStyles';
 // @ts-ignore
@@ -2885,7 +2885,6 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
   };
 
   const handleShareTopic = async (topic: any) => {
-    setSharingTopicId(topic.id);
     const storedUser = localStorage.getItem('dps_user');
     let userName = 'Chanthy';
     let userId = 'unknown';
@@ -2897,25 +2896,38 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
       } catch(e){}
     }
 
+    // 1. Generate local fallback link instantly so the user has a copyable button in milliseconds
+    let fallbackLink = '';
     try {
-      const { createSharedNote } = await import('../services/firebase');
-      
-      const shareId = await createSharedNote(userId, userName, 'self-learning', topic.title, topic);
-      
-      const link = window.location.origin + window.location.pathname + '?share=' + shareId;
-      setGeneratedShareLink(link);
-    } catch (error: any) {
-      console.error("Firestore sharing failed:", error);
-      const errMsg = error?.message || error || 'Unknown Error';
-      
-      if (error.message === 'PAYLOAD_TOO_LARGE') {
-          alert("Failed to share: The note is too large (likely due to many large images). Please remove some images or share smaller sub-topics.");
-      } else {
-          alert(`Failed to create shareable link: ${errMsg}\n\nPlease check your internet connection or try again.`);
-      }
-    } finally {
-      setSharingTopicId(null);
+      const base64Payload = encodeToURLSafeBase64({
+        ownerId: userId,
+        ownerName: userName,
+        type: 'self-learning',
+        title: topic.title,
+        payload: topic
+      });
+      fallbackLink = window.location.origin + window.location.pathname + '?sharedData=' + base64Payload;
+      setGeneratedShareLink(fallbackLink);
+    } catch (e) {
+      console.error("Local link generation failed:", e);
     }
+
+    // 2. Start cloud registration asynchronously in the background. No blocking loaders.
+    setSharingTopicId(topic.id);
+    import('../services/firebase')
+      .then(({ createSharedNote }) => {
+        return createSharedNote(userId, userName, 'self-learning', topic.title, topic);
+      })
+      .then((shareId) => {
+        const cloudLink = window.location.origin + window.location.pathname + '?share=' + shareId;
+        setGeneratedShareLink(cloudLink);
+      })
+      .catch((error: any) => {
+        console.warn("Firestore sharing failed in background (using local fallback link):", error);
+      })
+      .finally(() => {
+        setSharingTopicId(null);
+      });
   };
 
   const moveTopicToNoteTaking = async (topicToMove: DPSSTopic) => {
@@ -4764,6 +4776,21 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
             <p className="text-xs text-slate-500">
               Anyone with this link can view and import exactly this Self-learning topic folder structure (including all nesting notes) to their portal!
             </p>
+
+            <div className="flex items-center justify-between text-[9px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-950/40 px-3 py-1.5 rounded-xl border border-slate-100 dark:border-slate-800/40">
+              <span>Link Status</span>
+              <span>
+                {generatedShareLink.includes('?share=') ? (
+                  <span className="text-emerald-500 font-black flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span> Cloud Sync Active
+                  </span>
+                ) : (
+                  <span className="text-orange-500 font-black flex items-center gap-1.5">
+                    <Loader2 size={10} className="className animate-spin inline-block text-orange-500" /> Building Cloud Link...
+                  </span>
+                )}
+              </span>
+            </div>
             
             <div className="flex items-center bg-slate-50 dark:bg-slate-950 p-3 rounded-2xl border border-slate-200/60 dark:border-slate-800">
               <input 

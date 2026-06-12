@@ -10,7 +10,7 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianG
 import html2pdf from 'html2pdf.js';
 import { callNeuralEngine } from '../services/neuralEngine';
 import { ConfettiOverlay } from './ConfettiOverlay';
-import { copyToClipboard } from '../services/sharingEncoder';
+import { copyToClipboard, encodeToURLSafeBase64 } from '../services/sharingEncoder';
 
 const AMBIENT_WALLPAPERS = [
   { name: 'Beach Sunset', url: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&q=80&w=2000' },
@@ -152,7 +152,6 @@ export const HabitTracker: React.FC<HabitTrackerProps> = ({ data, onUpdate, onUp
   const [isCopied, setIsCopied] = useState(false);
 
   const handleShareNote = async () => {
-    setIsSharingNote(true);
     const dateKey = format(selectedPlanningDate, 'yyyy-MM-dd');
     const noteContent = notes[dateKey] || '';
     const storedUser = localStorage.getItem('dps_user');
@@ -166,26 +165,47 @@ export const HabitTracker: React.FC<HabitTrackerProps> = ({ data, onUpdate, onUp
       } catch(e){}
     }
 
+    const noteTitle = `Daily Note: ${format(selectedPlanningDate, 'MMM d, yyyy')}`;
+    const payloadData = { date: dateKey, content: noteContent };
+
+    // 1. Generate local fallback link instantly so the user has a copyable button in milliseconds
+    let fallbackLink = '';
     try {
-      const { createSharedNote } = await import('../services/firebase');
-      
-      const shareId = await createSharedNote(
-        userId,
-        userName,
-        'daily-note',
-        `Daily Note: ${format(selectedPlanningDate, 'MMM d, yyyy')}`,
-        { date: dateKey, content: noteContent }
-      );
-      
-      const link = window.location.origin + window.location.pathname + '?share=' + shareId;
-      setGeneratedShareLink(link);
-    } catch (error: any) {
-      console.error(error);
-      const errMsg = error?.message || error || 'Unknown error';
-      alert(`Failed to generate shared link: ${errMsg}\n\nPlease check your internet connection or try again.`);
-    } finally {
-      setIsSharingNote(false);
+      const base64Payload = encodeToURLSafeBase64({
+        ownerId: userId,
+        ownerName: userName,
+        type: 'daily-note',
+        title: noteTitle,
+        payload: payloadData
+      });
+      fallbackLink = window.location.origin + window.location.pathname + '?sharedData=' + base64Payload;
+      setGeneratedShareLink(fallbackLink);
+    } catch (e) {
+      console.error("Local hand-planning link generation failed:", e);
     }
+
+    // 2. Start cloud registration asynchronously in the background. No blocking loaders.
+    setIsSharingNote(true);
+    import('../services/firebase')
+      .then(({ createSharedNote }) => {
+        return createSharedNote(
+          userId,
+          userName,
+          'daily-note',
+          noteTitle,
+          payloadData
+        );
+      })
+      .then((shareId) => {
+        const cloudLink = window.location.origin + window.location.pathname + '?share=' + shareId;
+        setGeneratedShareLink(cloudLink);
+      })
+      .catch((error: any) => {
+        console.warn("Firestore sharing failed in background (using local fallback link):", error);
+      })
+      .finally(() => {
+        setIsSharingNote(false);
+      });
   };
 
   const openNoteDialog = (habit: Habit, dateStr: string) => {
@@ -2350,6 +2370,21 @@ export const HabitTracker: React.FC<HabitTrackerProps> = ({ data, onUpdate, onUp
             <p className="text-xs text-slate-500">
               Anyone with this link can view and import exactly this Daily Note into their active portal database!
             </p>
+
+            <div className="flex items-center justify-between text-[9px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-950/40 px-3 py-1.5 rounded-xl border border-slate-100 dark:border-slate-800/40">
+              <span>Link Status</span>
+              <span>
+                {generatedShareLink.includes('?share=') ? (
+                  <span className="text-emerald-500 font-black flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span> Cloud Sync Active
+                  </span>
+                ) : (
+                  <span className="text-orange-500 font-black flex items-center gap-1.5">
+                    <span className="animate-spin inline-block h-2 w-2 border-t-2 border-orange-500 rounded-full mr-1"></span> Building Cloud Link...
+                  </span>
+                )}
+              </span>
+            </div>
             
             <div className="flex items-center bg-slate-50 dark:bg-slate-950 p-3 rounded-2xl border border-slate-200/60 dark:border-slate-800">
               <input 
