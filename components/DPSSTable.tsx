@@ -30,6 +30,8 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importJsonText, setImportJsonText] = useState('');
   const [isCopiedJson, setIsCopiedJson] = useState(false);
+  const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set());
+  const [expandedRowIds, setExpandedRowIds] = useState<Set<string>>(new Set());
 
   const getTopicSizeString = (topic: any): string => {
     try {
@@ -1639,6 +1641,73 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
     }
   };
 
+  const handleBulkDelete = () => {
+    if (bulkSelectedIds.size === 0) return;
+    
+    const findSpecificTopic = (items: DPSSTopic[], searchId: string): DPSSTopic | null => {
+       for (const item of items) {
+         if (item.id === searchId) return item;
+         if (item.children) {
+           const found = findSpecificTopic(item.children, searchId);
+           if (found) return found;
+         }
+       }
+       return null;
+    };
+
+    // Check if any selected or its children are locked
+    const anyLocked = Array.from(bulkSelectedIds).some(id => {
+       const topic = findSpecificTopic(data.dpssTopics || [], id);
+       if (!topic) return false;
+       return topic.isLocked; // we only strictly check root level of selection
+    });
+    
+    if (anyLocked) {
+      alert("One or more selected items are LOCKED. Please unlock them individually before deleting.");
+      return;
+    }
+    
+    if (!confirm(`Move ${bulkSelectedIds.size} selected item(s) to Recycle Bin? OK / Cancel`)) {
+      return;
+    }
+    
+    const ids = Array.from(bulkSelectedIds);
+    const markDeletedBulk = (items: DPSSTopic[]): DPSSTopic[] => {
+      return items.map(item => {
+        if (ids.includes(item.id)) return { ...item, deletedAt: new Date().toISOString() };
+        if (item.children) return { ...item, children: markDeletedBulk(item.children) };
+        return item;
+      });
+    };
+    
+    const updatedData = markDeletedBulk(data.dpssTopics || []);
+    
+    // Save all affected roots
+    if (onUpdateTopic) {
+      const affectedRootIds = new Set<string>();
+      ids.forEach(id => {
+         const root = findRootTopic(data.dpssTopics || [], id);
+         if (root) affectedRootIds.add(root.id);
+      });
+      
+      affectedRootIds.forEach(rId => {
+         const updatedRoot = findRootTopic(updatedData, rId);
+         if (updatedRoot) {
+            onUpdateTopic(updatedData, updatedRoot);
+         }
+      });
+      if (affectedRootIds.size === 0) {
+        onUpdateTopic(updatedData, undefined);
+      }
+    } else {
+      onUpdate({ ...data, dpssTopics: updatedData });
+    }
+    if (selectedTopicId && ids.includes(selectedTopicId)) {
+      setSelectedTopicId(null);
+    }
+    setBulkSelectedIds(new Set());
+  };
+
   const updateTopic = (id: string, updates: Partial<DPSSTopic>) => {
     const updateItems = (items: DPSSTopic[]): DPSSTopic[] => {
       return items.map(item => {
@@ -2883,6 +2952,22 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                 <GripVertical size={14} />
               </div>
             )}
+            
+            <input 
+              type="checkbox" 
+              checked={bulkSelectedIds.has(topic.id)}
+              onChange={(e) => {
+                e.stopPropagation();
+                setBulkSelectedIds(prev => {
+                   const next = new Set(prev);
+                   if (next.has(topic.id)) next.delete(topic.id);
+                   else next.add(topic.id);
+                   return next;
+                });
+              }}
+              className="shrink-0 w-3 h-3 text-orange-500 border-slate-300 rounded focus:ring-orange-500 cursor-pointer"
+            />
+
             {hasChildren ? (
               <button 
                 onClick={(e) => {
@@ -2894,7 +2979,21 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
                 {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
               </button>
             ) : (
-              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${style.indicator} ml-1.5`} />
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setExpandedRowIds(prev => {
+                    const next = new Set(prev);
+                    if (next.has(topic.id)) next.delete(topic.id);
+                    else next.add(topic.id);
+                    return next;
+                  });
+                }}
+                className="p-0.5 rounded hover:bg-slate-200/50 dark:hover:bg-slate-800 shrink-0 text-slate-500 ml-0.5"
+                title="Expand/Collapse details"
+              >
+                {expandedRowIds.has(topic.id) ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              </button>
             )}
             
             {editingTopicId === topic.id ? (
@@ -3068,6 +3167,19 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
           </div>
         </div>
         
+        {!hasChildren && expandedRowIds.has(topic.id) && (
+           <div className="ml-8 mr-2 mb-2 p-3 bg-slate-50 dark:bg-slate-900 rounded-lg text-xs text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 break-words overflow-hidden">
+             {topic.content ? (
+                <div 
+                   className="line-clamp-4 overflow-hidden [&>*]:m-0 [&>*]:p-0 [&_ol]:pl-4 [&_ul]:pl-4 text-[10px]"
+                   dangerouslySetInnerHTML={{ __html: topic.content }} 
+                />
+             ) : (
+                <p className="italic text-slate-400">Empty extended details/notes.</p>
+             )}
+           </div>
+        )}
+
         {hasChildren && isExpanded && (
           <div className="border-l border-dashed border-slate-200 dark:border-slate-800 ml-2.5 pl-1.5">
             {topic.children!.map(child => renderTopic(child, depth + 1))}
@@ -3120,6 +3232,34 @@ export const DPSSTable: React.FC<DPSSTableProps> = ({ data, onUpdate, onUpdateTo
 
         {/* Unifed Scrollable Column containing action buttons, search, topics, and folder archive */}
         <div className="flex-1 overflow-y-auto pr-1 -mr-1 space-y-3 max-[767px]:landscape:space-y-2.5 custom-scrollbar flex flex-col">
+          {bulkSelectedIds.size > 0 && (
+            <div className="flex bg-slate-800 text-white rounded-2xl items-center justify-between p-2 shadow-lg mb-1 shrink-0">
+               <div className="text-[10px] font-black pl-3">{bulkSelectedIds.size} selected</div>
+               <div className="flex gap-1.5 pr-1">
+                 <button 
+                    onClick={() => {
+                       const next = new Set<string>();
+                       if (bulkSelectedIds.size < filteredTopics.length) {
+                          filteredTopics.forEach(t => next.add(t.id));
+                       }
+                       setBulkSelectedIds(next);
+                    }}
+                    className="p-1.5 hover:bg-slate-700 rounded-xl transition-colors cursor-pointer"
+                    title="Select/Deselect All Root Files"
+                 >
+                    <CheckSquare size={14} className="text-blue-400" />
+                 </button>
+                 <button 
+                    onClick={handleBulkDelete}
+                    className="p-1.5 hover:bg-slate-700 rounded-xl transition-colors cursor-pointer"
+                    title="Delete Selected"
+                 >
+                    <Trash2 size={14} className="text-red-400" />
+                 </button>
+               </div>
+            </div>
+          )}
+
           <div className="flex flex-row gap-2 shrink-0">
             <button 
               onClick={() => {
