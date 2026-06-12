@@ -67,24 +67,9 @@ const JournalBlock: React.FC<JournalBlockProps> = ({ title, icon, children, bgCo
 
     const journalTitle = `Journal: ${format(selectedDate, 'MMM d, yyyy')}`;
 
-    // 1. Generate local fallback link instantly so the user has a copyable button in milliseconds
-    let fallbackLink = '';
-    try {
-      const base64Payload = encodeToURLSafeBase64({
-        ownerId: userId,
-        ownerName: userName,
-        type: 'journal',
-        title: journalTitle,
-        payload: currentEntry
-      });
-      fallbackLink = window.location.origin + window.location.pathname + '?sharedData=' + base64Payload;
-      setGeneratedShareLink(fallbackLink);
-    } catch (e) {
-      console.error("Local journal link generation failed:", e);
-    }
-
-    // 2. Start cloud registration asynchronously in the background. No blocking loaders.
     setIsSharingJournal(true);
+    setGeneratedShareLink('PENDING');
+
     import('../services/firebase')
       .then(({ createSharedNote }) => {
         return createSharedNote(
@@ -100,7 +85,9 @@ const JournalBlock: React.FC<JournalBlockProps> = ({ title, icon, children, bgCo
         setGeneratedShareLink(cloudLink);
       })
       .catch((error: any) => {
-        console.warn("Firestore sharing failed in background (using local fallback link):", error);
+        console.error("Firestore sharing failed:", error);
+        alert(`Failed to create clean shared link: ${error.message || error}`);
+        setGeneratedShareLink(null);
       })
       .finally(() => {
         setIsSharingJournal(false);
@@ -1055,7 +1042,7 @@ Keep the advice direct, mature, and completely focused on human performance. Avo
             <div className="flex items-center justify-between text-[9px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-950/40 px-3 py-1.5 rounded-xl border border-slate-100 dark:border-slate-800/40">
               <span>Link Status</span>
               <span>
-                {generatedShareLink.includes('?share=') ? (
+                {generatedShareLink !== 'PENDING' && generatedShareLink.includes('?share=') ? (
                   <span className="text-emerald-500 font-black flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span> Cloud Sync Active
                   </span>
@@ -1071,13 +1058,15 @@ Keep the advice direct, mature, and completely focused on human performance. Avo
               <input 
                 type="text" 
                 readOnly 
-                value={generatedShareLink} 
-                onClick={(e) => (e.target as HTMLInputElement).select()}
-                className="flex-1 bg-transparent text-xs text-slate-700 dark:text-slate-300 outline-none select-all truncate pr-2 font-mono cursor-pointer"
-                title="Click to select all text"
+                value={generatedShareLink === 'PENDING' ? 'Generating clean secure link...' : generatedShareLink} 
+                onClick={(e) => generatedShareLink !== 'PENDING' && (e.target as HTMLInputElement).select()}
+                className="flex-1 bg-transparent text-xs text-slate-700 dark:text-slate-300 outline-none select-all truncate pr-2 font-mono cursor-pointer disabled:opacity-50"
+                disabled={generatedShareLink === 'PENDING'}
+                title={generatedShareLink === 'PENDING' ? "Generating link..." : "Click to select all text"}
               />
               <button 
                 onClick={async () => {
+                  if (generatedShareLink === 'PENDING') return;
                   const success = await copyToClipboard(generatedShareLink);
                   if (success) {
                     setIsCopied(true);
@@ -1086,7 +1075,8 @@ Keep the advice direct, mature, and completely focused on human performance. Avo
                     alert("Unable to copy automatically. Please copy the link manually from the input field.");
                   }
                 }}
-                className="h-8 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-[10px] uppercase font-black tracking-widest rounded-xl transition-all"
+                disabled={generatedShareLink === 'PENDING'}
+                className="h-8 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-[10px] uppercase font-black tracking-widest rounded-xl transition-all disabled:opacity-40 disabled:scale-100"
               >
                 {isCopied ? 'Copied!' : 'Copy'}
               </button>

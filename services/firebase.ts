@@ -126,9 +126,7 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
     operationType,
     path
   };
-  console.warn('Firestore Error (Soft Logged for Vercel/Offline Resilience): ', JSON.stringify(errInfo));
-  isOffline = true;
-  // Graceful no-crash fallback for unauthorized error or offline behavior
+  console.warn('Firestore Error occurred: ', JSON.stringify(errInfo));
 }
 
 const DOC_PATH = 'portal/data';
@@ -153,18 +151,6 @@ export const logOut = async () => {
     console.error("Sign-out Error:", error);
   }
 };
-
-async function testConnection() {
-  try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch (error) {
-    if(error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration.");
-      isOffline = true;
-    }
-  }
-}
-testConnection();
 
 // Global cache to prevent race conditions between local writes and remote snapshots
 const activeSubscriptions = new Map<string, {
@@ -597,11 +583,32 @@ export const saveTopic = async (userId: string, topic: any, category: 'dpss' | '
     try {
       const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
       const flatNodes = flattenTopicTree(topic);
+      const newFlatNodeIds = new Set(flatNodes.map(n => n.id));
+      
+      // Query Firestore for any existing flat node documents with this rootId
+      const collRef = collection(db, 'users', userId, coll);
+      const q = query(collRef, where('rootId', '==', topic.id));
+      const querySnap = await getDocs(q);
+      const existingIdsInFirestore = querySnap.docs.map(doc => doc.id);
       
       const batches = [];
       let currentBatch = writeBatch(db);
       let operationCount = 0;
       
+      // 1. Delete documents for any nodes that were removed from the tree in frontend
+      for (const existingId of existingIdsInFirestore) {
+        if (!newFlatNodeIds.has(existingId)) {
+          if (operationCount >= 490) {
+            batches.push(currentBatch.commit());
+            currentBatch = writeBatch(db);
+            operationCount = 0;
+          }
+          currentBatch.delete(doc(db, 'users', userId, coll, existingId));
+          operationCount++;
+        }
+      }
+      
+      // 2. Save up-to-date active nodes
       for (const node of flatNodes) {
         const sanitizedNode = sanitizeForFirestore(node);
         const sizeBytes = new Blob([JSON.stringify(sanitizedNode)]).size;
@@ -642,25 +649,46 @@ export const deleteTopic = async (userId: string, topicId: string, category: 'dp
   
   // Update local cache
   const sub = activeSubscriptions.get(userId);
-  let flatNodes: any[] = [];
   if (sub) {
     const field = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
     const topics = sub.currentData[field] || [];
-    const topicToDelete = topics.find((t: any) => t.id === topicId);
-    if (topicToDelete) {
-       flatNodes = flattenTopicTree(topicToDelete);
-    }
     updateLocalCache(userId, { [field]: topics.filter((t: any) => t.id !== topicId) });
   }
 
   try {
     const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
-    const batch = writeBatch(db);
-    batch.delete(doc(db, 'users', userId, coll, topicId));
-    flatNodes.forEach(node => {
-       batch.delete(doc(db, 'users', userId, coll, node.id));
+    const collRef = collection(db, 'users', userId, coll);
+    
+    // Query all existing nodes for this rootId to guarantee absolute deletion of descendants
+    const q = query(collRef, where('rootId', '==', topicId));
+    const querySnap = await getDocs(q);
+    
+    const batches = [];
+    let currentBatch = writeBatch(db);
+    let operationCount = 0;
+    
+    // Delete root doc
+    currentBatch.delete(doc(db, 'users', userId, coll, topicId));
+    operationCount++;
+    
+    // Delete descendants found in Firestore
+    querySnap.docs.forEach(d => {
+      if (d.id !== topicId) {
+        if (operationCount >= 490) {
+          batches.push(currentBatch.commit());
+          currentBatch = writeBatch(db);
+          operationCount = 0;
+        }
+        currentBatch.delete(doc(db, 'users', userId, coll, d.id));
+        operationCount++;
+      }
     });
-    await batch.commit();
+    
+    if (operationCount > 0) {
+      batches.push(currentBatch.commit());
+    }
+    
+    await Promise.all(batches);
   } catch (error) {
     const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
     handleFirestoreError(error, OperationType.DELETE, `users/${userId}/${coll}/${topicId}`);
@@ -837,101 +865,27 @@ export const createSharedNote = async (
   title: string,
   payload: any
 ): Promise<string> => {
-  const shareId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-  const shareRef = doc(db, 'sharedNotes', shareId);
-  
-  // Strip massive base64 images to keep the shared payload lightweight (< 100KB) and prevent Firestore size limits
-  const lightPayload = stripMassiveImages(payload);
+  const response = await fetch('/api/share/create', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ userId, ownerName, type, title, payload }),
+  });
 
-  const safeData = {
-    id: String(shareId),
-    ownerId: String(userId || 'unknown').substring(0, 120),
-    ownerName: String(ownerName || 'Chanthy').substring(0, 120),
-    type: String(type || 'self-learning').substring(0, 45),
-    title: String(title || 'Untitled').substring(0, 250),
-    payload: null as any,
-    createdAt: new Date().toISOString()
-  };
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || 'Failed to create shareable link on server');
+  }
 
-  const writeOperation = async () => {
-    if (type === 'note-taking' || type === 'self-learning') {
-       // Clear payload on parent metadata doc to keep it tiny
-       safeData.payload = null;
-       
-       const batch = writeBatch(db);
-       batch.set(shareRef, safeData);
-       
-       const flatNodes = flattenTopicTree(lightPayload);
-       
-       for (const node of flatNodes) {
-          const nodeRef = doc(db, 'sharedNotes', shareId, 'nodes', node.id);
-          const serialized = sanitizeForFirestore(node);
-          const sizeBytes = new Blob([JSON.stringify(serialized)]).size;
-          if (sizeBytes > 950000) {
-              throw new Error('PAYLOAD_TOO_LARGE');
-          }
-          batch.set(nodeRef, serialized);
-       }
-       
-       await batch.commit();
-    } else {
-       // For journal, daily-note, and other non-tree types
-       safeData.payload = sanitizeForFirestore(lightPayload || {});
-       const sizeBytes = new Blob([JSON.stringify(safeData)]).size;
-       if (sizeBytes > 950000) {
-         throw new Error('PAYLOAD_TOO_LARGE');
-       }
-       await setDoc(shareRef, safeData);
-    }
-  };
-
-  const timeoutPromise = new Promise<never>((_, reject) => 
-    setTimeout(() => reject(new Error('TIMEOUT')), 45000)
-  );
-
-  await Promise.race([
-    writeOperation(),
-    timeoutPromise
-  ]);
-  
-  return shareId;
+  const result = await response.json();
+  return result.shareId;
 };
 
 export const getSharedNote = async (shareId: string): Promise<any> => {
-  const shareRef = doc(db, 'sharedNotes', shareId);
-  let data: any = null;
-
-  try {
-    const docSnap = await getDocFromServer(shareRef);
-    if (docSnap.exists()) {
-      data = docSnap.data();
-    }
-  } catch (error) {
-    console.warn("getDocFromServer failed, trying default getDoc:", error);
-    const docSnap = await getDoc(shareRef);
-    if (docSnap.exists()) {
-      data = docSnap.data();
-    }
+  const response = await fetch(`/api/share/get/${shareId}`);
+  if (!response.ok) {
+    return null;
   }
-
-  if (data) {
-    if (data.type === 'note-taking' || data.type === 'self-learning') {
-      try {
-        const nodesRef = collection(db, 'sharedNotes', shareId, 'nodes');
-        const nodesSnap = await getDocs(nodesRef); // Subcollection docs
-        if (!nodesSnap.empty) {
-          const flatDocs = nodesSnap.docs.map(d => d.data());
-          const reconstructed = reconstructTopics(flatDocs);
-          if (reconstructed.length > 0) {
-            data.payload = reconstructed[0];
-          }
-        }
-      } catch (e) {
-        console.error("Failed to fetch shared note children:", e);
-      }
-    }
-    return data;
-  }
-
-  return null;
+  return response.json();
 };

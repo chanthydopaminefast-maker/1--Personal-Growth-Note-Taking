@@ -1572,6 +1572,14 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
       });
     };
     const updated = updateTopics(data.selfLearningTopics || []);
+
+    // Automatically select the newly created topic so the user can start using or typing immediately
+    setSelectedTopicId(newTopic.id);
+    
+    // Automatically enter rename/edit mode on the title so they can rename it right away
+    setEditingTopicId(newTopic.id);
+    setEditingTopicTitle('New Topic');
+
     if (onUpdateTopic) {
       if (!parentId) {
         onUpdateTopic(updated, newTopic);
@@ -2896,24 +2904,9 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
       } catch(e){}
     }
 
-    // 1. Generate local fallback link instantly so the user has a copyable button in milliseconds
-    let fallbackLink = '';
-    try {
-      const base64Payload = encodeToURLSafeBase64({
-        ownerId: userId,
-        ownerName: userName,
-        type: 'self-learning',
-        title: topic.title,
-        payload: topic
-      });
-      fallbackLink = window.location.origin + window.location.pathname + '?sharedData=' + base64Payload;
-      setGeneratedShareLink(fallbackLink);
-    } catch (e) {
-      console.error("Local link generation failed:", e);
-    }
-
-    // 2. Start cloud registration asynchronously in the background. No blocking loaders.
     setSharingTopicId(topic.id);
+    setGeneratedShareLink('PENDING');
+
     import('../services/firebase')
       .then(({ createSharedNote }) => {
         return createSharedNote(userId, userName, 'self-learning', topic.title, topic);
@@ -2923,7 +2916,9 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
         setGeneratedShareLink(cloudLink);
       })
       .catch((error: any) => {
-        console.warn("Firestore sharing failed in background (using local fallback link):", error);
+        console.error("Sharing failed:", error);
+        alert(`Failed to create clean shared link: ${error.message || error}`);
+        setGeneratedShareLink(null);
       })
       .finally(() => {
         setSharingTopicId(null);
@@ -4780,13 +4775,13 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
             <div className="flex items-center justify-between text-[9px] uppercase font-bold tracking-wider text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-950/40 px-3 py-1.5 rounded-xl border border-slate-100 dark:border-slate-800/40">
               <span>Link Status</span>
               <span>
-                {generatedShareLink.includes('?share=') ? (
+                {generatedShareLink !== 'PENDING' && generatedShareLink.includes('?share=') ? (
                   <span className="text-emerald-500 font-black flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span> Cloud Sync Active
                   </span>
                 ) : (
                   <span className="text-orange-500 font-black flex items-center gap-1.5">
-                    <Loader2 size={10} className="className animate-spin inline-block text-orange-500" /> Building Cloud Link...
+                    <Loader2 size={10} className="animate-spin inline-block text-orange-500" /> Building Cloud Link...
                   </span>
                 )}
               </span>
@@ -4796,13 +4791,15 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
               <input 
                 type="text" 
                 readOnly 
-                value={generatedShareLink} 
-                onClick={(e) => (e.target as HTMLInputElement).select()}
-                className="flex-1 bg-transparent text-xs text-slate-700 dark:text-slate-300 outline-none select-all truncate pr-2 font-mono cursor-pointer"
-                title="Click to select all text"
+                value={generatedShareLink === 'PENDING' ? 'Generating clean secure link...' : generatedShareLink} 
+                onClick={(e) => generatedShareLink !== 'PENDING' && (e.target as HTMLInputElement).select()}
+                className="flex-1 bg-transparent text-xs text-slate-700 dark:text-slate-300 outline-none select-all truncate pr-2 font-mono cursor-pointer disabled:opacity-50"
+                disabled={generatedShareLink === 'PENDING'}
+                title={generatedShareLink === 'PENDING' ? "Generating link..." : "Click to select all text"}
               />
               <button 
                 onClick={async () => {
+                  if (generatedShareLink === 'PENDING') return;
                   const success = await copyToClipboard(generatedShareLink);
                   if (success) {
                     setIsCopied(true);
@@ -4811,7 +4808,8 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
                     alert("Unable to copy automatically. Please copy the link manually from the input field.");
                   }
                 }}
-                className="h-8 px-4 bg-orange-500 hover:bg-orange-600 active:scale-95 text-white text-[10px] uppercase font-black tracking-widest rounded-xl transition-all"
+                disabled={generatedShareLink === 'PENDING'}
+                className="h-8 px-4 bg-orange-500 hover:bg-orange-600 active:scale-95 text-white text-[10px] uppercase font-black tracking-widest rounded-xl transition-all disabled:opacity-40 disabled:scale-100"
               >
                 {isCopied ? 'Copied!' : 'Copy'}
               </button>
@@ -4820,15 +4818,6 @@ export const SelfLearningTable: React.FC<SelfLearningTableProps> = ({ data, onUp
             <div className="flex justify-between items-center pt-2">
               <button 
                 onClick={() => {
-                  let shareId = '';
-                  try {
-                    const searchParams = new URL(generatedShareLink).searchParams;
-                    shareId = searchParams.get('share') || searchParams.get('sharedData') || 'fallback';
-                  } catch (e) {
-                    shareId = 'fallback';
-                  }
-                  if (!shareId) return;
-                  
                   const findNode = (nodes: any[], id: string): any => {
                      for (let node of nodes) {
                         if (node.id === id) return node;
