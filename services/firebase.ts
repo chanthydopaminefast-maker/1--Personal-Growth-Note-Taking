@@ -8,7 +8,8 @@ import {
   getDocFromServer, 
   collection, 
   writeBatch,
-  getDoc
+  getDoc,
+  getDocs
 } from 'firebase/firestore';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, setPersistence, browserLocalPersistence } from 'firebase/auth'; 
 import { AppData, BackupEntry, Student } from '../types';
@@ -155,6 +156,58 @@ export const subscribeToData = (
   
   const docRef = doc(db, 'users', userId, 'appData', 'data');
   const unsubscribes: (() => void)[] = [];
+
+  const activeSubtopicUnsubs = new Map<string, () => void>(); // key: `${category}-${topicId}`
+
+  const manageSubtopicSubscriptions = (category: 'dpss' | 'selfLearning', topics: any[]) => {
+    const sub = activeSubscriptions.get(userId);
+    if (!sub) return;
+
+    const currentKeys = new Set(topics.map(t => `${category}-${t.id}`));
+
+    // Unsubscribe from keys that are no longer active
+    activeSubtopicUnsubs.forEach((unsub, key) => {
+      if (key.startsWith(`${category}-`) && !currentKeys.has(key)) {
+        unsub();
+        activeSubtopicUnsubs.delete(key);
+      }
+    });
+
+    // Subscribe to new keys
+    topics.forEach(topic => {
+      const key = `${category}-${topic.id}`;
+      if (!activeSubtopicUnsubs.has(key)) {
+        const collName = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
+        const subtopicsRef = collection(db, 'users', userId, collName, topic.id, 'subtopics');
+        const unsub = onSnapshot(subtopicsRef, (childrenSnap) => {
+          const s = activeSubscriptions.get(userId);
+          if (s) {
+            const field = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
+            const currentList = s.currentData[field] || [];
+            const tIdx = currentList.findIndex((t: any) => t.id === topic.id);
+            if (tIdx !== -1) {
+              const children = childrenSnap.docs
+                .map(d => d.data() as any)
+                .sort((a, b) => (a.order || 0) - (b.order || 0));
+              
+              const oldChildren = currentList[tIdx].children || [];
+              const isSame = JSON.stringify(oldChildren) === JSON.stringify(children);
+              if (!isSame) {
+                const updatedTopic = { ...currentList[tIdx], children };
+                const newList = [...currentList];
+                newList[tIdx] = updatedTopic;
+                s.currentData[field] = newList;
+                notifyChange();
+              }
+            }
+          }
+        }, (err) => {
+          console.warn(`Failed to sync subtopics for topic ${topic.id}`, err);
+        });
+        activeSubtopicUnsubs.set(key, unsub);
+      }
+    });
+  };
   
   // Initialize from localStorage first to prevent partial state wipes on initial load
   let initialData: AppData = { 
@@ -305,8 +358,40 @@ export const subscribeToData = (
   const unsubTopics = onSnapshot(topicsRef, (querySnap) => {
     const sub = activeSubscriptions.get(userId);
     if (sub) {
-      sub.currentData.dpssTopics = querySnap.docs.map(d => d.data() as any);
+      const parentTopics = querySnap.docs.map(d => {
+        const data = d.data() as any;
+        const existingTopic = (sub.currentData.dpssTopics || []).find((oldT: any) => oldT.id === data.id);
+        const children = existingTopic ? (existingTopic.children || []) : (data.children || []);
+        const { children: _, ...meta } = data;
+        return { ...meta, children };
+      }).sort((a, b) => (a.order || 0) - (b.order || 0));
+
+      sub.currentData.dpssTopics = parentTopics;
       notifyChange();
+
+      // Manage dynamic child subscriptions for DPSS Topics
+      manageSubtopicSubscriptions('dpss', parentTopics);
+
+      // On-the-fly backward compatible migration: if any document has inline children stored on Firestore,
+      // upload them to the subtopics subcollection and remove them from the parent doc.
+      querySnap.docs.forEach(async (d) => {
+        const rawData = d.data() as any;
+        if (rawData.children && Array.isArray(rawData.children) && rawData.children.length > 0) {
+          console.log(`Migrating topic ${rawData.id} children to subtopics collection...`);
+          try {
+            const batch = writeBatch(db);
+            rawData.children.forEach((child: any, idx: number) => {
+              const childRef = doc(db, 'users', userId, 'dpssTopics', rawData.id, 'subtopics', child.id);
+              batch.set(childRef, { ...child, order: child.order ?? idx });
+            });
+            const { children, ...parentMetadata } = rawData;
+            batch.set(d.ref, parentMetadata);
+            await batch.commit();
+          } catch (mErr) {
+            console.error(`Migration failed for topic ${rawData.id}`, mErr);
+          }
+        }
+      });
     }
   }, (err) => handleFirestoreError(err, OperationType.GET, topicsRef.path));
   unsubscribes.push(unsubTopics);
@@ -344,14 +429,46 @@ export const subscribeToData = (
   const unsubSl = onSnapshot(slRef, (querySnap) => {
     const sub = activeSubscriptions.get(userId);
     if (sub) {
-      sub.currentData.selfLearningTopics = querySnap.docs.map(d => d.data() as any);
+      const parentTopics = querySnap.docs.map(d => {
+        const data = d.data() as any;
+        const existingTopic = (sub.currentData.selfLearningTopics || []).find((oldT: any) => oldT.id === data.id);
+        const children = existingTopic ? (existingTopic.children || []) : (data.children || []);
+        const { children: _, ...meta } = data;
+        return { ...meta, children };
+      }).sort((a, b) => (a.order || 0) - (b.order || 0));
+
+      sub.currentData.selfLearningTopics = parentTopics;
       notifyChange();
+
+      // Manage dynamic child subscriptions for Self Learning Topics
+      manageSubtopicSubscriptions('selfLearning', parentTopics);
+
+      // On-the-fly backward compatible migration
+      querySnap.docs.forEach(async (d) => {
+        const rawData = d.data() as any;
+        if (rawData.children && Array.isArray(rawData.children) && rawData.children.length > 0) {
+          try {
+            const batch = writeBatch(db);
+            rawData.children.forEach((child: any, idx: number) => {
+              const childRef = doc(db, 'users', userId, 'selfLearningTopics', rawData.id, 'subtopics', child.id);
+              batch.set(childRef, { ...child, order: child.order ?? idx });
+            });
+            const { children, ...parentMetadata } = rawData;
+            batch.set(d.ref, parentMetadata);
+            await batch.commit();
+          } catch (mErr) {
+            console.error(`Migration failed for topic ${rawData.id}`, mErr);
+          }
+        }
+      });
     }
   }, (err) => handleFirestoreError(err, OperationType.GET, slRef.path));
   unsubscribes.push(unsubSl);
 
   return () => {
     unsubscribes.forEach(u => u());
+    activeSubtopicUnsubs.forEach(unsub => unsub());
+    activeSubtopicUnsubs.clear();
     activeSubscriptions.delete(userId);
   };
 };
@@ -505,7 +622,7 @@ export const saveJournalEntry = async (userId: string, date: string, entry: any)
 export const saveTopic = async (userId: string, topic: any, category: 'dpss' | 'selfLearning' = 'dpss') => {
   if (!userId || !topic || !topic.id) return;
   
-  // Update local cache
+  // Update local cache with full structure to allow instantaneous UI rendering
   const sub = activeSubscriptions.get(userId);
   if (sub) {
     const field = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
@@ -517,8 +634,35 @@ export const saveTopic = async (userId: string, topic: any, category: 'dpss' | '
 
   try {
     const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
+    
+    // Separation of Concerns: extract children to store separately under subcollection
+    const { children, ...parentMetadata } = topic;
+    
     const docRef = doc(db, 'users', userId, coll, topic.id);
-    await setDoc(docRef, topic);
+    await setDoc(docRef, parentMetadata);
+
+    if (children && Array.isArray(children)) {
+      const batch = writeBatch(db);
+      
+      // Clean up orphaned subtopics that are no longer in the updated children array
+      const subtopicsColl = collection(db, 'users', userId, coll, topic.id, 'subtopics');
+      const existingSnap = await getDocs(subtopicsColl);
+      const newIds = new Set(children.map(c => String(c.id)));
+      
+      existingSnap.docs.forEach(d => {
+        if (!newIds.has(String(d.id))) {
+          batch.delete(doc(db, 'users', userId, coll, topic.id, 'subtopics', d.id));
+        }
+      });
+
+      // Write/update current subtopics
+      children.forEach((child, idx) => {
+        const childRef = doc(db, 'users', userId, coll, topic.id, 'subtopics', child.id);
+        batch.set(childRef, { ...child, order: child.order ?? idx });
+      });
+
+      await batch.commit();
+    }
   } catch (error) {
     const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
     handleFirestoreError(error, OperationType.WRITE, `users/${userId}/${coll}/${topic.id}`);
@@ -538,6 +682,19 @@ export const deleteTopic = async (userId: string, topicId: string, category: 'dp
   try {
     const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
     const docRef = doc(db, 'users', userId, coll, topicId);
+    
+    // Clean up all children subtopic documents recursively to prevent leaving schema junk
+    const subtopicsColl = collection(db, 'users', userId, coll, topicId, 'subtopics');
+    const subtopicsSnap = await getDocs(subtopicsColl);
+    if (!subtopicsSnap.empty) {
+      const batch = writeBatch(db);
+      subtopicsSnap.docs.forEach(docSnap => {
+        batch.delete(docSnap.ref);
+      });
+      await batch.commit();
+    }
+
+    // Delete parent
     await deleteDoc(docRef);
   } catch (error) {
     const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
@@ -578,21 +735,48 @@ export const saveTopicsBulk = async (
     updateLocalCache(userId, { dpssTopics, selfLearningTopics });
   }
 
-  const batch = writeBatch(db);
-
-  topicsToSave.forEach(({ topic, category }) => {
-    const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
-    const docRef = doc(db, 'users', userId, coll, topic.id);
-    batch.set(docRef, topic);
-  });
-
-  topicIdsToDelete.forEach(({ id, category }) => {
-    const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
-    const docRef = doc(db, 'users', userId, coll, id);
-    batch.delete(docRef);
-  });
-
   try {
+    const batch = writeBatch(db);
+
+    // Recursively clean up deleted topics and their subtopics subcollections
+    for (const { id, category } of topicIdsToDelete) {
+      const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
+      const docRef = doc(db, 'users', userId, coll, id);
+      batch.delete(docRef);
+
+      const subtopicsColl = collection(db, 'users', userId, coll, id, 'subtopics');
+      const subtopicsSnap = await getDocs(subtopicsColl);
+      subtopicsSnap.docs.forEach(docSnap => {
+        batch.delete(docSnap.ref);
+      });
+    }
+
+    // Save metadata and children to respective collections and subcollections
+    for (const { topic, category } of topicsToSave) {
+      const coll = category === 'dpss' ? 'dpssTopics' : 'selfLearningTopics';
+      const { children, ...parentMetadata } = topic;
+      
+      const docRef = doc(db, 'users', userId, coll, topic.id);
+      batch.set(docRef, parentMetadata);
+
+      if (children && Array.isArray(children)) {
+        const subtopicsColl = collection(db, 'users', userId, coll, topic.id, 'subtopics');
+        const existingSnap = await getDocs(subtopicsColl);
+        const newIds = new Set(children.map(c => String(c.id)));
+        
+        existingSnap.docs.forEach(d => {
+          if (!newIds.has(String(d.id))) {
+            batch.delete(doc(db, 'users', userId, coll, topic.id, 'subtopics', d.id));
+          }
+        });
+
+        children.forEach((child, idx) => {
+          const childRef = doc(db, 'users', userId, coll, topic.id, 'subtopics', child.id);
+          batch.set(childRef, { ...child, order: child.order ?? idx });
+        });
+      }
+    }
+
     await batch.commit();
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, `users/${userId}/topics/bulk`);
